@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Read It Later - For BookWorms by BookWorms</title>
+    <meta name="author" content="Pranesh Jha">
+    <meta name="description" content="Read it Later is a blah blah blah">
+    <link rel="stylesheet" href="../CSS/style.css">
+    <link rel="shortcut icon" href="/public/favicon.png" type="image/x-icon">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sniglet:wght@400;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Elms+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="nav-hero">
+                <span class="ibm-plex-serif-medium">folio</span>
+            </div>
+            <div class="nav-auth">
+                <div class="nav-menu">
+                    <a href="#features" class="nav-links" id="features">Features</a>
+                    <a href="#howitworks" class="nav-links" id="howitworks">How it works</a>
+                    <a href="#hero-right-heading" class="nav-links" id="signin">Sign in</a>
+                </div>
+                <div class="theme-toggle" id="theme-toggle">
+                    <i class="fas fa-sun" id="theme-icon"></i>
+                </div>
+            </div>
+            
+        </div>
+    </nav>
+    <div class="hero" id="hero">
+        <div class="hero-container">
+            <div class="hero-left">
+                <div class="hero-left-container">
+                    <div class="hero-left-special" style="display: flex; flex-direction: row;">
+                        <i data-lucide="sparkles" id="special-icon"></i>
+                        <span class="hero-base">AI-POWERED READING</span>
+                    </div>
+                    <div class="hero-heading">
+                        <h1>Read Later.<br>Learn Forever.</h1>
+                    </div>
+                    <div class="hero-subtitle">
+                        <p>Save articles, PDFs, and EPUBs. AI scores each one, predicts what you'll actually read, and builds learning paths from your library.</p>
+                    </div>
+                    <div class="hero-card" id="hero-card">
+                        <div class="hero-badges">
+                            <span class="badge"><i data-lucide="brain-circuit"></i> AI insights</span>
+                            <span class="badge"><i data-lucide="clock"></i> Time-aware queue</span>
+                            <span class="badge"><i data-lucide="route"></i> Learning paths</span>
+                            <span class="badge"><i data-lucide="palette"></i> 12 reading themes</span>
+                        </div>
+                    </div>
+                    <div class="hero-visual">
+                        <div class="book" id="book1">
+                            THE AI HORIZON
+                        </div>
+                        <div class="book" id="book2">
+                            DEEP WORK
+                        </div>
+                        <div class="book" id="book3">
+                            RUST IN ACTION
+                        </div>
+                        <div class="book" id="book4">
+                            SYSTEM DESIGN
+                        </div>
+                        <div class="book" id="book5">
+                            ML PATTERNS
+                        </div>
+                        <div class="book" id="book6">
+                            PHILOSOPHY
+                        </div>
+                        <div class="book" id="book7">
+                            WEB FUTURES
+                        </div>
+                        <div class="book" id="book8">
+                            DARK MATTER
+                        </div>
+                    </div>
+                    <div class="hero-left-special" style="display: flex; flex-direction: row;">
+                        <i class="fa-solid fa-book-user"></i>
+                        Joined by <span id="user-number"></span> readers.
+                    </div>
+                </div>
+            </div>
+            <div class="hero-right">
+                <div class="hero-right-container">
+                    <div class="hero-heading">
+                        <h1 id="hero-right-heading">Welcome Back</h1>
+                    </div>
+                    <div class="hero-subtitle" id="subtitle-right">
+                        <p>Sign in to your library.</p>
+                    </div>
+                    
+                    <form id="signin-form" class="auth-form active">
+                        <div class="form-group">
+                            <label for="signin-email">Email</label>
+                            <input type="email" id="signin-email" name="email" placeholder="your@email.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="signin-password">Password</label>
+                            <div class="password-input-wrapper">
+                                <input type="password" id="signin-password" name="password" placeholder="••••••••" required>
+                                <button type="button" class="password-toggle" data-target="signin-password">
+                                    <i data-lucide="eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="submit" class="auth-button">Sign In</button>
+                        <div class="auth-links">
+                            <a href="#" id="forgot-password" class="auth-link">Forgot password?</a>
+                            <span class="link-separator">•</span>
+                            <a href="#" id="create-account-link" class="auth-link">Create an account</a>
+                        </div>
+                    </form>
+
+                    <form id="signup-form" class="auth-form">
+                        <div class="form-group">
+                            <label for="signup-name">Name</label>
+                            <input type="text" id="signup-name" name="name" placeholder="Your name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="signup-email">Email</label>
+                            <input type="email" id="signup-email" name="email" placeholder="your@email.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="signup-password">Password</label>
+                            <div class="password-input-wrapper">
+                                <input type="password" id="signup-password" name="password" placeholder="••••••••" required>
+                                <button type="button" class="password-toggle" data-target="signup-password">
+                                    <i data-lucide="eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="signup-confirm">Confirm Password</label>
+                            <div class="password-input-wrapper">
+                                <input type="password" id="signup-confirm" name="confirm_password" placeholder="••••••••" required>
+                                <button type="button" class="password-toggle" data-target="signup-confirm">
+                                    <i data-lucide="eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group" style="display: none;" id="otp-group">
+                            <label for="signup-otp">OTP</label>
+                            <input type="text" id="signup-otp" name="otp" placeholder="Enter OTP" required disabled>
+                        </div>
+                        <button type="submit" class="auth-button">Sign Up</button>
+                        <div class="auth-links">
+                            <a href="#" id="back-to-signin" class="auth-link">Back to Sign In</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="features-grid">
+            <div class="feature-item">
+                <i data-lucide="lightbulb" class="feature-icon"></i>
+                <h3>Article Understanding Engine</h3>
+                <p>Every article analyzed for topics, difficulty, key concepts, and ROI score automatically.</p>
+            </div>
+            <div class="feature-item">
+                <i data-lucide="calendar-clock" class="feature-icon"></i>
+                <h3>Time-aware queue</h3>
+                <p>Tell it you have 8 minutes. Get the perfect reading list, not a scroll of saved links.</p>
+            </div>
+            <div class="feature-item">
+                <i data-lucide="trending-up" class="feature-icon"></i>
+                <h3>Curiosity heatmap</h3>
+                <p>Discover your genuine interests based on what you actually read, not just save.</p>
+            </div>
+        </div>
+    </div>
+</body>
+<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>
+    lucide.createIcons();
+</script>
+<!-- <script>
+    document.documentElement.setAttribute('data-theme', 'dark');
+</script> -->
+
+<script src="../js/main.js"></script>
+<script>
+    const signinForm = document.getElementById('signin-form');
+    const signupForm = document.getElementById('signup-form');
+    const createAccountLink = document.getElementById('create-account-link');
+    const backToSigninLink = document.getElementById('back-to-signin');
+    
+    createAccountLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        signinForm.classList.remove('active');
+        signupForm.classList.add('active');
+        document.getElementById('hero-right-heading').textContent = 'Create Account';
+        document.getElementById('subtitle-right').querySelector('p').textContent = 'Join our reading community.';
+    });
+    
+    backToSigninLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        signupForm.classList.remove('active');
+        signinForm.classList.add('active');
+        document.getElementById('hero-right-heading').textContent = 'Welcome Back';
+        document.getElementById('subtitle-right').querySelector('p').textContent = 'Sign in to your library.';
+    });
+    
+    const passwordToggles = document.querySelectorAll('.password-toggle');
+    passwordToggles.forEach(toggle => {
+        toggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('data-target');
+            const targetInput = document.getElementById(targetId);
+            
+            if (targetInput.type === 'password') {
+                targetInput.type = 'text';
+                this.innerHTML = '<i data-lucide="eye-off"></i>';
+            } else {
+                targetInput.type = 'password';
+                this.innerHTML = '<i data-lucide="eye"></i>';
+            }
+            lucide.createIcons();
+        });
+    });
+</script>
+</html>
