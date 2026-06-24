@@ -1,25 +1,41 @@
 import cloudinary
 import cloudinary.uploader
-import os
-import asyncio
+from fastapi import UploadFile, HTTPException, status
+from settings import CLOUDINARY_CONFIG
 
-cloudinary.config( 
-  cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"), 
-  api_key = os.getenv("CLOUDINARY_API_KEY"), 
-  api_secret = os.getenv("CLOUDINARY_API_SECRET") 
+cloudinary.config(
+    cloud_name=CLOUDINARY_CONFIG['cloud_name'],
+    api_key=CLOUDINARY_CONFIG['api_key'],
+    api_secret=CLOUDINARY_CONFIG['api_secret'],
+    secure=True
 )
 
-async def upload_file(file_bytes: bytes, filename: str) -> str:
+def upload_file_to_cloudinary(file: UploadFile) -> str:
     """
-    Uploads a file to Cloudinary and returns the secure URL.
+    Synchronously uploads an uploaded file to Cloudinary.
+    Since we support PDF and EPUB (non-image files), we set resource_type to 'raw'.
+    Returns the secure URL of the uploaded file.
     """
-    loop = asyncio.get_running_loop()
-    def _upload():
+    try:
+        # Read file content
+        file_content = file.file.read()
+        
+        # Upload
         response = cloudinary.uploader.upload(
-            file_bytes, 
-            resource_type="auto", 
-            public_id=filename
+            file_content,
+            public_id=file.filename,
+            resource_type="raw"
         )
-        return response.get("secure_url")
-    
-    return await loop.run_in_executor(None, _upload)
+        
+        secure_url = response.get("secure_url")
+        if not secure_url:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Cloudinary did not return a secure URL"
+            )
+        return secure_url
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload file to Cloudinary: {str(e)}"
+        )

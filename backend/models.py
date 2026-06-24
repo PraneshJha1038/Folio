@@ -6,29 +6,30 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from database import Base
 
-GENRE_CHECK_SQL = (
-    "genre IN ("
-    "'Action & Adventure', 'Academic Paper', 'Agriculture', 'Anthropology', "
-    "'Archaeology', 'Architecture', 'Art & Photography', 'Astronomy', "
-    "'Biography & Memoir', 'Biology', 'Business & Finance', 'Chemistry', "
-    "'Childrens Literature', 'Classics', 'Crafts & Hobbies', 'Current Affairs', "
-    "'Cybersecurity', 'Drama & Plays', 'Dystopian', 'Earth Sciences', "
-    "'Economics', 'Education', 'Engineering', 'Environment & Ecology', "
-    "'Epic Fantasy', 'Essays & Anthologies', 'Fashion & Beauty', 'Fiction', "
-    "'General Knowledge', 'Geography', 'Graphic Novels & Manga', 'Health & Wellness', "
-    "'Historical Fiction', 'History', 'Horror', 'Humor & Comedy', "
-    "'Interviews & Profiles', 'Investigative Journalism', 'Law & Jurisprudence', "
-    "'Linguistics', 'Literary Fiction', 'Magical Realism', 'Mathematics', "
-    "'Medical Sciences', 'Metaphysics', 'Military & Warfare', 'Music & Performing Arts', "
-    "'Mystery & Crime', 'Mythology & Folklore', 'Nature & Wildlife', 'News Reporting', "
-    "'Non-Fiction', 'Opinion & Editorial', 'Parenting & Family', 'Philosophy', "
-    "'Physics', 'Poetry', 'Political Science', 'Psychology', 'Public Policy', "
-    "'Reference & Dictionaries', 'Religion & Spirituality', 'Romance', 'Satire', "
-    "'Science Fiction', 'Self-Help', 'Sociology', 'Sports & Recreation', "
-    "'Technology & Computing', 'Thriller & Suspense', 'Travel & Tourism', "
-    "'True Crime', 'Utopian Fiction', 'Westerns', 'Young Adult'"
-    ")"
-)
+GENRES = [
+    'Action & Adventure', 'Academic Paper', 'Agriculture', 'Anthropology', 
+    'Archaeology', 'Architecture', 'Art & Photography', 'Astronomy', 
+    'Biography & Memoir', 'Biology', 'Business & Finance', 'Chemistry', 
+    'Childrens Literature', 'Classics', 'Crafts & Hobbies', 'Current Affairs', 
+    'Cybersecurity', 'Drama & Plays', 'Dystopian', 'Earth Sciences', 
+    'Economics', 'Education', 'Engineering', 'Environment & Ecology', 
+    'Epic Fantasy', 'Essays & Anthologies', 'Fashion & Beauty', 'Fiction', 
+    'General Knowledge', 'Geography', 'Graphic Novels & Manga', 'Health & Wellness', 
+    'Historical Fiction', 'History', 'Horror', 'Humor & Comedy', 
+    'Interviews & Profiles', 'Investigative Journalism', 'Law & Jurisprudence', 
+    'Linguistics', 'Literary Fiction', 'Magical Realism', 'Mathematics', 
+    'Medical Sciences', 'Metaphysics', 'Military & Warfare', 'Music & Performing Arts', 
+    'Mystery & Crime', 'Mythology & Folklore', 'Nature & Wildlife', 'News Reporting', 
+    'Non-Fiction', 'Opinion & Editorial', 'Parenting & Family', 'Philosophy', 
+    'Physics', 'Poetry', 'Political Science', 'Psychology', 'Public Policy', 
+    'Reference & Dictionaries', 'Religion & Spirituality', 'Romance', 'Satire', 
+    'Science Fiction', 'Self-Help', 'Sociology', 'Sports & Recreation', 
+    'Technology & Computing', 'Thriller & Suspense', 'Travel & Tourism', 
+    'True Crime', 'Utopian Fiction', 'Westerns', 'Young Adult'
+]
+
+GENRE_CHECK_SQL = f"genre IN ({', '.join(f"'{g}'" for g in GENRES)})"
+
 
 class User(Base):
     __tablename__ = "users"
@@ -53,6 +54,7 @@ class ContentSource(Base):
     author: Mapped[str | None] = mapped_column(String(255))  
     source_url: Mapped[str | None] = mapped_column(Text)
     file_path: Mapped[str | None] = mapped_column(Text)
+    raw_text: Mapped[str | None] = mapped_column(Text)
     cover_image_url: Mapped[str | None] = mapped_column(Text)
     word_count: Mapped[int | None] = mapped_column(Integer)
     visibility: Mapped[str] = mapped_column(String(10), default="local")
@@ -118,6 +120,8 @@ class LibraryItem(Base):
     current_position: Mapped[str | None] = mapped_column(String(255))
     is_finished: Mapped[bool] = mapped_column(Boolean, default=False)
     finished_at: Mapped[object | None] = mapped_column(TIMESTAMP(timezone=True))
+    
+    content_source: Mapped["ContentSource"] = relationship("ContentSource")
     __table_args__ = (
         UniqueConstraint("user_id", "content_id", name="uq_user_content"),
         Index("idx_library_items_content", "content_id"),
@@ -189,4 +193,20 @@ class PendingOtp(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True)
     otp_hash: Mapped[str] = mapped_column(String(255))
     expires_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True))
-    created_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+    created_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+
+from sqlalchemy.dialects.postgresql import JSONB
+
+class SuggestionRequest(Base):
+    __tablename__ = "suggestion_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    time_budget_minutes: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(10), default="pending")
+    result: Mapped[dict | None] = mapped_column(JSONB)  # [{library_item_id, score, reason}, ...]
+    created_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+    completed_at: Mapped[object | None] = mapped_column(TIMESTAMP(timezone=True))
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'completed', 'failed')", name="check_suggestion_status"),
+    )
+

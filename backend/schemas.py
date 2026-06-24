@@ -1,158 +1,270 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, HttpUrl, field_validator
-from typing import List, Optional, Any
+from pydantic import BaseModel, Field, field_validator, EmailStr, model_validator, ConfigDict
+from enum import Enum
 from datetime import datetime
-import re
+from models import GENRES
 
-from models import GENRE_CHECK_SQL
+# Enums
+class ContentType(str, Enum):
+    article = "article"
+    pdf = "pdf"
+    epub = "epub"
 
-# Dynamically extract genres from the SQL constraint to ensure a single source of truth
-VALID_GENRES = set(re.findall(r"'([^']+)'", GENRE_CHECK_SQL))
+class Visibility(str, Enum):
+    local = "local"
+    global_ = "global"  # global is a keyword in Python, so using global_ but mapped to value "global"
+    
+    @classmethod
+    def _missing_(cls, value):
+        if value == "global":
+            return cls.global_
+        return super()._missing_(value)
 
-def validate_genres_list(genres: List[str]) -> List[str]:
-    for g in genres:
-        if g not in VALID_GENRES:
-            raise ValueError(f"Invalid genre: '{g}'. Must be one of the supported genres.")
-    return genres
+    # Use value serialization for Pydantic/fastapi response
+    def __str__(self):
+        return self.value
 
-def validate_single_genre(genre: str) -> str:
-    if genre not in VALID_GENRES:
-        raise ValueError(f"Invalid genre: '{genre}'. Must be one of the supported genres.")
-    return genre
+class BookmarkType(str, Enum):
+    bookmark = "bookmark"
+    highlight = "highlight"
 
-# --- Auth Schemas ---
+class ReportStatus(str, Enum):
+    open = "open"
+    reviewed = "reviewed"
 
-class SendOtpRequest(BaseModel):
-    name: Optional[str] = None
+class SuggestionStatus(str, Enum):
+    pending = "pending"
+    completed = "completed"
+    failed = "failed"
+
+# 1. User schemas
+class UserCreate(BaseModel):
+    display_name: str
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8)
 
-class VerifyOtpRequest(BaseModel):
-    name: Optional[str] = None
-    email: EmailStr
-    password: str
-    otp: str
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, password: str) -> str:
+        special_characters = "!@#$%^&*()-_:'?/><.,~`"
+        has_special_character = any(char in special_characters for char in password)
+        has_upper_case = any(char.isupper() for char in password)
+        
+        if len(password) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not has_special_character:
+            raise ValueError("Password must contain at least one special character")
+        if not has_upper_case:
+            raise ValueError("Password must contain at least one uppercase letter")
+        return password
 
 class UserResponse(BaseModel):
     id: int
-    email: str
-    display_name: Optional[str] = None
-    current_wpm: Optional[int] = None
+    display_name: str | None
+    email: EmailStr
     default_wpm: int
-    model_config = ConfigDict(from_attributes=True)
-
-# --- Content Schemas ---
-
-class ContentSourceBase(BaseModel):
-    type: str
-    title: str
-    author: Optional[str] = None
-    visibility: str = "local"
-    word_count: Optional[int] = None
-
-class ContentSourceResponse(ContentSourceBase):
-    id: int
-    owner_id: int
-    source_url: Optional[str] = None
-    file_path: Optional[str] = None
-    cover_image_url: Optional[str] = None
+    current_wpm: int | None
+    reading_sessions_count: int
     created_at: datetime
     updated_at: datetime
+
     model_config = ConfigDict(from_attributes=True)
 
-class URLContentRequest(BaseModel):
-    url: HttpUrl
-    visibility: str = "local"
-    genres: List[str] = []
+class UserUpdate(BaseModel):
+    display_name: str | None = None
+    email: EmailStr | None = None
+    default_wpm: int | None = None
+    current_wpm: int | None = None
 
-    @field_validator('genres')
+# 2. ContentSource schemas
+class ContentSourceCreate(BaseModel):
+    type: ContentType
+    title: str = Field(max_length=500)
+    author: str | None = Field(default=None, max_length=255)
+    source_url: str | None = None
+    file_path: str | None = None
+    visibility: Visibility = Visibility.local
+
+    @model_validator(mode="after")
+    def check_has_source(self) -> "ContentSourceCreate":
+        file_path = self.file_path
+        source_url = self.source_url
+        if not file_path and not source_url:
+            raise ValueError("Either file_path or source_url is required")
+        if file_path and source_url:
+            raise ValueError("Provide only one of file_path or source_url, not both")
+        return self
+
+class ContentSourceResponse(BaseModel):
+    id: int
+    owner_id: int
+    type: ContentType
+    title: str
+    author: str | None
+    source_url: str | None
+    file_path: str | None
+    raw_text: str | None
+    cover_image_url: str | None
+    word_count: int | None
+    visibility: Visibility
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ContentSourceUpdate(BaseModel):
+    title: str | None = None
+    author: str | None = None
+    cover_image_url: str | None = None
+    visibility: Visibility | None = None
+
+# 3. ContentGenre schemas
+class ContentGenreCreate(BaseModel):
+    genre: str
+
+    @field_validator("genre")
     @classmethod
-    def check_genres(cls, v):
-        return validate_genres_list(v)
+    def check_genre(cls, v: str) -> str:
+        if v not in GENRES:
+            raise ValueError(f"Invalid genre. Must be one of: {', '.join(GENRES)}")
+        return v
 
-class UploadContentResponse(BaseModel):
-    status: str
+class ContentGenreResponse(BaseModel):
     content_id: int
+    genre: str
 
-# --- Library Schemas ---
+    model_config = ConfigDict(from_attributes=True)
+
+# 4. UserGenrePreference schemas
+class UserGenrePreferenceCreate(BaseModel):
+    genre: str
+
+    @field_validator("genre")
+    @classmethod
+    def check_genre(cls, v: str) -> str:
+        if v not in GENRES:
+            raise ValueError(f"Invalid genre. Must be one of: {', '.join(GENRES)}")
+        return v
+
+class UserGenrePreferenceResponse(BaseModel):
+    user_id: int
+    genre: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+# 5. Shelf schemas
+class ShelfCreate(BaseModel):
+    name: str = Field(max_length=100)
+    sort_order: int = 0
+
+class ShelfResponse(BaseModel):
+    id: int
+    user_id: int
+    name: str
+    sort_order: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ShelfUpdate(BaseModel):
+    name: str | None = None
+    sort_order: int | None = None
+
+# 6. LibraryItem schemas
+class LibraryItemCreate(BaseModel):
+    content_id: int
 
 class LibraryItemResponse(BaseModel):
     id: int
     user_id: int
     content_id: int
     added_at: datetime
-    last_opened_at: Optional[datetime] = None
-    current_position: Optional[str] = None
+    last_opened_at: datetime | None
+    current_position: str | None
     is_finished: bool
-    finished_at: Optional[datetime] = None
+    finished_at: datetime | None
+    content_source: ContentSourceResponse | None = None
+
     model_config = ConfigDict(from_attributes=True)
 
-class AddLibraryItemRequest(BaseModel):
-    content_id: int
+class LibraryItemUpdate(BaseModel):
+    current_position: str | None = None
+    is_finished: bool | None = None
 
-class UpdateVisibilityRequest(BaseModel):
-    visibility: str
+# 7. ShelfItem schemas
+class ShelfItemCreate(BaseModel):
+    library_item_id: int
+    sort_order: int = 0
 
-    @field_validator('visibility')
-    @classmethod
-    def check_visibility(cls, v):
-        if v not in ('local', 'global'):
-            raise ValueError("Visibility must be 'local' or 'global'")
-        return v
-
-class ShelfCreateRequest(BaseModel):
-    name: str
-
-class ShelfResponse(BaseModel):
-    id: int
-    name: str
+class ShelfItemResponse(BaseModel):
+    shelf_id: int
+    library_item_id: int
     sort_order: int
-    created_at: datetime
+    added_at: datetime
+
     model_config = ConfigDict(from_attributes=True)
 
-# --- Reading Schemas ---
-
-class ReadingSessionRequest(BaseModel):
+# 8. ReadingSession schemas
+class ReadingSessionCreate(BaseModel):
     library_item_id: int
-    duration_sec: int
-    words_covered: int
-    progress_pct: float
+    duration_sec: int = Field(gt=0)
+    words_covered: int = Field(gt=0)
+    progress_pct: float = Field(ge=0, le=100)
+
+class ReadingSessionResponse(BaseModel):
+    id: int
+    library_item_id: int
     started_at: datetime
-    ended_at: datetime
+    ended_at: datetime | None
+    duration_sec: int | None
+    words_covered: int | None
+    progress_pct: float | None
 
-    @field_validator('progress_pct')
-    @classmethod
-    def check_progress(cls, v):
-        if not (0.0 <= v <= 100.0):
-            raise ValueError("Progress percentage must be between 0 and 100")
-        return v
+    model_config = ConfigDict(from_attributes=True)
 
-class BookmarkHighlightRequest(BaseModel):
+# 9. BookmarkHighlight schemas
+class BookmarkHighlightCreate(BaseModel):
+    type: BookmarkType
+    position: str = Field(max_length=255)
+    highlighted_text: str | None = None
+    note: str | None = None
+
+class BookmarkHighlightResponse(BaseModel):
+    id: int
     library_item_id: int
-    type: str
+    type: BookmarkType
     position: str
-    highlighted_text: Optional[str] = None
-    note: Optional[str] = None
+    highlighted_text: str | None
+    note: str | None
+    created_at: datetime
 
-    @field_validator('type')
-    @classmethod
-    def check_type(cls, v):
-        if v not in ('bookmark', 'highlight'):
-            raise ValueError("Type must be 'bookmark' or 'highlight'")
-        return v
+    model_config = ConfigDict(from_attributes=True)
 
-# --- Suggestions Schemas ---
+# 10. ContentReport schemas
+class ContentReportCreate(BaseModel):
+    reason: str
 
-class TimeBudgetRequest(BaseModel):
-    time_minutes: int
+class ContentReportResponse(BaseModel):
+    id: int
+    content_id: int
+    reported_by: int
+    reason: str
+    status: ReportStatus
+    created_at: datetime
 
-class SuggestionResponse(BaseModel):
-    status: str
-    message: str
+    model_config = ConfigDict(from_attributes=True)
+
+# 11. SuggestionRequest schemas
+class SuggestionRequestCreate(BaseModel):
+    time_budget_minutes: int = Field(gt=0)
+
+class SuggestionRequestResponse(BaseModel):
+    id: int
+    user_id: int
+    time_budget_minutes: int
+    status: SuggestionStatus
+    result: list | dict | None
+    created_at: datetime
+    completed_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
