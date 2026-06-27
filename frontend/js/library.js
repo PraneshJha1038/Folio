@@ -312,11 +312,7 @@ class LibraryManager {
                     </div>
                     <div class="book-dropdown-item danger" data-action="delete" data-id="${book.library_item_id || book.id}">
                         <i data-lucide="trash-2"></i> Delete
-                    </div>` : `
-                    <div class="book-dropdown-item" data-action="add-library" data-id="${book.id}">
-                        <i data-lucide="plus-circle"></i> Add to My Library
-                    </div>
-                    `}
+                    </div>` : ``}
                 </div>
             </div>
             <div class="book-info">

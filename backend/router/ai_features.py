@@ -1,6 +1,7 @@
 import os
 import httpx
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,10 +27,13 @@ async def call_ai_service(endpoint: str, payload: dict) -> dict | None:
     try:
         async with httpx.AsyncClient(timeout=None) as client:
             response = await client.post(f"{AI_SERVICE_URL}{endpoint}", json=payload)
+            result = response.json()
             response.raise_for_status()
-            return response.json()
+            await asyncio.sleep(10)
+            return result
     except (httpx.HTTPStatusError, httpx.RequestError) as e:
         print(f"AI Service Call failed: {e}")
+        await asyncio.sleep(10)
         return None
 
 # ==============================================================================
