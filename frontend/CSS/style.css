@@ -455,3 +455,28 @@ body{
     width: 14px;
     height: 14px;
 }
+
+/* ── Error Toast ── */
+.error-toast {
+    position: fixed;
+    top: -200px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #c0392b;
+    color: #fff;
+    padding: 0.7rem 1.2rem;
+    border-radius: 6px;
+    z-index: 9999;
+    font-family: 'Bricolage Grotesque', serif;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    pointer-events: none;
+    max-width: min(480px, 88vw);
+    width: max-content;
+    white-space: normal;
+    word-break: break-word;
+    text-align: center;
+    transition: top 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.error-toast.show { top: 1.2rem; }

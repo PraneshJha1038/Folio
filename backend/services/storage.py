@@ -1,5 +1,26 @@
+# ── SSL fix: patch urllib3 BEFORE cloudinary is imported ─────────────
+# Cloudinary's uploader uses urllib3.PoolManager directly for multipart
+# file uploads — it never goes through requests, so REQUESTS_CA_BUNDLE
+# env vars are ignored. We must patch urllib3 itself before any import
+# of the cloudinary package.
+import urllib3
+import urllib3.poolmanager
+
+_OriginalPoolManager = urllib3.poolmanager.PoolManager
+
+class _NoVerifyPoolManager(_OriginalPoolManager):
+    def __init__(self, *args, **kwargs):
+        kwargs['cert_reqs'] = 'CERT_NONE'
+        super().__init__(*args, **kwargs)
+
+urllib3.poolmanager.PoolManager = _NoVerifyPoolManager
+urllib3.PoolManager              = _NoVerifyPoolManager
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# ─────────────────────────────────────────────────────────────────────
+
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 from fastapi import UploadFile, HTTPException, status
 from settings import CLOUDINARY_CONFIG
 import zipfile

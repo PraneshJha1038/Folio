@@ -1,0 +1,462 @@
+/* ===========================
+   reader.css — inherits style.css tokens
+   =========================== */
+
+/* ---------- Custom reader props ---------- */
+:root {
+    --rdr-font-size: 1.05rem;
+    --rdr-line-height: 1.72;
+    --rdr-max-width: 720px;
+    --rdr-margin: 3rem;
+    --rdr-nav-h: 56px;
+}
+
+/* ---------- Body ---------- */
+body {
+    overflow: hidden;
+}
+
+/* ---------- Floating nav ---------- */
+.rdr-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--rdr-nav-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1.2rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    z-index: 200;
+    /* Hidden until hover */
+    opacity: 0;
+    transform: translateY(-100%);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    pointer-events: none;
+}
+
+/* Show nav when the whole page is hovered */
+body:hover .rdr-nav {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.rdr-nav-left,
+.rdr-nav-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.rdr-doc-title {
+    font-family: 'IBM Plex Serif', serif;
+    font-size: 0.92rem;
+    font-weight: 400;
+    color: var(--text-primary);
+    margin-left: 0.5rem;
+    max-width: 400px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Icon buttons in the reader nav */
+.rdr-icon-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 0.35rem;
+    transition: background 0.15s, color 0.15s;
+    padding: 0;
+}
+.rdr-icon-btn svg {
+    width: 16px;
+    height: 16px;
+}
+.rdr-icon-btn:hover {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+/* Thin vertical divider in nav */
+.rdr-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border-primary);
+    margin: 0 0.2rem;
+}
+
+/* Reuse theme-toggle class from style.css — already styled correctly */
+
+/* ---------- Shell ---------- */
+.rdr-shell {
+    display: flex;
+    height: 100vh;
+    padding-top: 0; /* nav floats above */
+}
+
+/* ---------- TOC Sidebar ---------- */
+.rdr-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 260px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-primary);
+    z-index: 150;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    padding-top: var(--rdr-nav-h);
+}
+.rdr-sidebar.open {
+    transform: translateX(0);
+}
+
+.rdr-sidebar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.rdr-sidebar-title {
+    font-family: 'Bricolage Grotesque', serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-light);
+}
+
+.rdr-toc-list {
+    list-style: none;
+    overflow-y: auto;
+    flex: 1;
+    padding: 0.5rem 0.5rem;
+}
+.rdr-toc-list li {
+    padding: 0.5rem 0.8rem;
+    border-radius: 0.35rem;
+    cursor: pointer;
+    font-family: 'Bricolage Grotesque', serif;
+    font-size: 0.82rem;
+    color: var(--text-light);
+    transition: background 0.15s, color 0.15s;
+}
+.rdr-toc-list li:hover {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+.rdr-toc-empty {
+    color: var(--text-light) !important;
+    font-style: italic;
+    cursor: default !important;
+}
+.rdr-toc-empty:hover {
+    background: transparent !important;
+}
+
+/* ---------- Main ---------- */
+.rdr-main {
+    flex: 1;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Engine containers */
+.rdr-engine {
+    flex: 1;
+    display: flex;
+    position: relative;
+    height: 100vh;
+    padding-top: var(--rdr-nav-h);
+}
+
+/* ---- EPUB engine ---- */
+#rdr-epub {
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+}
+#epub-viewer {
+    flex: 1;
+    height: 100%;
+    max-width: var(--rdr-max-width);
+    width: 100%;
+    position: relative;
+}
+.rdr-page-arrow {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-light);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.rdr-page-arrow svg { width: 22px; height: 22px; }
+.rdr-page-arrow:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+/* ---- PDF engine ---- */
+.rdr-pdf-engine {
+    flex-direction: column;
+    align-items: center;
+}
+.rdr-pdf-scroll {
+    flex: 1;
+    overflow-y: auto;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding: 2rem 0 5rem;
+}
+.rdr-canvas-wrap {
+    position: relative;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    display: inline-block;
+}
+#pdf-canvas { display: block; }
+.rdr-text-layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    line-height: 1;
+    pointer-events: auto;
+}
+.rdr-text-layer span {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+}
+::selection { background: rgba(74, 144, 226, 0.35); }
+.rdr-pdf-controls {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 2rem;
+    padding: 0.35rem 0.8rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    z-index: 100;
+}
+.rdr-pdf-page-info {
+    font-family: 'Bricolage Grotesque', serif;
+    font-size: 0.82rem;
+    color: var(--text-light);
+    white-space: nowrap;
+}
+
+/* ---- Article engine ---- */
+.rdr-article-engine {
+    overflow-y: auto;
+}
+.rdr-article-body {
+    max-width: var(--rdr-max-width);
+    margin: 0 auto;
+    padding: calc(var(--rdr-nav-h) + 2rem) var(--rdr-margin) 6rem;
+    font-family: 'IBM Plex Serif', serif;
+    font-size: var(--rdr-font-size);
+    line-height: var(--rdr-line-height);
+    color: var(--text-primary);
+}
+.rdr-article-body h1 {
+    font-size: 1.6rem;
+    font-weight: 500;
+    margin-bottom: 0.3rem;
+    line-height: 1.3;
+}
+.rdr-article-body .article-meta {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin-bottom: 2rem;
+    font-family: 'Bricolage Grotesque', serif;
+}
+.rdr-article-body p {
+    margin-bottom: 1.2em;
+}
+.rdr-article-body a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--border-primary);
+}
+
+/* ---------- Bottom progress ---------- */
+.rdr-progress-track {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--bg-secondary);
+    z-index: 300;
+}
+.rdr-progress-fill {
+    height: 100%;
+    background: var(--text-primary);
+    transition: width 0.4s ease;
+    width: 0%;
+}
+
+/* Error toast */
+.error-toast {
+    position: fixed;
+    top: -200px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #c0392b;
+    color: #fff;
+    padding: 0.75rem 1.2rem;
+    border-radius: 6px;
+    z-index: 9999;
+    font-family: 'Bricolage Grotesque', serif;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    pointer-events: none;
+    max-width: min(480px, 88vw);
+    width: max-content;
+    white-space: normal;
+    word-break: break-word;
+    text-align: center;
+    transition: top 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.error-toast.show { top: 1.2rem; }
+
+/* ---------- Settings Panel ---------- */
+.rdr-settings-panel {
+    position: fixed;
+    top: 0;
+    right: -320px; /* Hidden by default */
+    width: 320px;
+    height: 100vh;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-primary);
+    z-index: 400;
+    transition: right 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+    box-shadow: -4px 0 15px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+}
+.rdr-settings-panel.open {
+    right: 0;
+}
+.rdr-settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--border-primary);
+}
+.rdr-settings-header h3 {
+    font-family: 'Bricolage Grotesque', serif;
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin: 0;
+}
+.rdr-settings-body {
+    padding: 1.2rem;
+    overflow-y: auto;
+    flex: 1;
+}
+.rdr-setting-group {
+    margin-bottom: 1.5rem;
+}
+.rdr-setting-group label {
+    display: block;
+    font-family: 'Bricolage Grotesque', serif;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-bottom: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+/* Font size slider */
+.font-size-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+.font-size-slider-wrap input[type=range] {
+    flex: 1;
+    cursor: pointer;
+}
+/* Font family grid */
+.font-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+.font-btn {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    color: var(--text-primary);
+    padding: 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 0.9rem;
+    transition: border-color 0.2s;
+}
+.font-btn.active, .font-btn:hover {
+    border-color: var(--text-primary);
+}
+/* Theme grid */
+.theme-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+}
+.theme-btn {
+    height: 40px;
+    border-radius: 4px;
+    border: 1px solid var(--border-primary);
+    cursor: pointer;
+    position: relative;
+}
+.theme-btn.active {
+    border: 2px solid var(--text-primary);
+}
+
+/* ---------- 12 Themes ---------- */
+[data-theme="light"] { --bg-primary: #ffffff; --bg-secondary: #f9f9f9; --text-primary: #111111; --text-light: #666666; --border-primary: #e0e0e0; }
+[data-theme="dark"] { --bg-primary: #121212; --bg-secondary: #1a1a1a; --text-primary: #eeeeee; --text-light: #999999; --border-primary: #333333; }
+[data-theme="sepia"] { --bg-primary: #f4ecd8; --bg-secondary: #e9dec0; --text-primary: #433422; --text-light: #705d49; --border-primary: #d6c6a4; }
+[data-theme="forest"] { --bg-primary: #e4efe4; --bg-secondary: #d4e2d4; --text-primary: #1e3b1e; --text-light: #3e5e3e; --border-primary: #b3c9b3; }
+[data-theme="ocean"] { --bg-primary: #e6f0f5; --bg-secondary: #d6e4ec; --text-primary: #1c3d52; --text-light: #3d6076; --border-primary: #b8ccd8; }
+[data-theme="dusk"] { --bg-primary: #2b2b36; --bg-secondary: #353542; --text-primary: #e2e2ec; --text-light: #9e9eb0; --border-primary: #4d4d5e; }
+[data-theme="nord"] { --bg-primary: #2e3440; --bg-secondary: #3b4252; --text-primary: #eceff4; --text-light: #d8dee9; --border-primary: #4c566a; }
+[data-theme="solarized"] { --bg-primary: #fdf6e3; --bg-secondary: #eee8d5; --text-primary: #657b83; --text-light: #93a1a1; --border-primary: #d0c8b6; }
+[data-theme="dracula"] { --bg-primary: #282a36; --bg-secondary: #44475a; --text-primary: #f8f8f2; --text-light: #6272a4; --border-primary: #6272a4; }
+[data-theme="rose"] { --bg-primary: #fff0f5; --bg-secondary: #ffe4e1; --text-primary: #4a2333; --text-light: #835266; --border-primary: #e8c4c9; }
+[data-theme="slate"] { --bg-primary: #1e293b; --bg-secondary: #0f172a; --text-primary: #f8fafc; --text-light: #94a3b8; --border-primary: #334155; }
+[data-theme="paper"] { --bg-primary: #fdfdfc; --bg-secondary: #f0f0f0; --text-primary: #333333; --text-light: #777777; --border-primary: #e5e5e5; }

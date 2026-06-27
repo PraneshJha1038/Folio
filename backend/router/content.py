@@ -83,7 +83,50 @@ async def upload_content(
     await db.commit()
     await db.refresh(content_source)
     
+    # Auto-add to user's library
+    from models import LibraryItem
+    library_item = LibraryItem(
+        user_id=current_user.id,
+        content_id=content_source.id,
+        is_finished=False
+    )
+    db.add(library_item)
+    await db.commit()
+    
     return content_source
+
+@router.post("/{id}/cover", response_model=ContentSourceResponse)
+async def upload_cover_image(
+    id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(ContentSource).where(ContentSource.id == id))
+    content_source = result.scalar_one_or_none()
+    if not content_source:
+        raise HTTPException(status_code=404, detail="Content not found")
+    if content_source.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this content")
+        
+    # Upload image to cloudinary
+    try:
+        import cloudinary.uploader
+        file_content = file.file.read()
+        response = cloudinary.uploader.upload(
+            file_content,
+            resource_type="image"
+        )
+        secure_url = response.get("secure_url")
+        if secure_url:
+            content_source.cover_image_url = secure_url
+            await db.commit()
+            await db.refresh(content_source)
+            return content_source
+        else:
+            raise HTTPException(status_code=500, detail="Cloudinary upload failed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload cover: {str(e)}")
 
 class UrlUploadRequest(Any):
     # Pydantic schema helper
@@ -122,6 +165,16 @@ async def upload_url(
     db.add(content_source)
     await db.commit()
     await db.refresh(content_source)
+    
+    # Auto-add to user's library
+    from models import LibraryItem
+    library_item = LibraryItem(
+        user_id=current_user.id,
+        content_id=content_source.id,
+        is_finished=False
+    )
+    db.add(library_item)
+    await db.commit()
     
     return content_source
 

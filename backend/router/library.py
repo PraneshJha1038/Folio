@@ -259,6 +259,55 @@ async def delete_shelf(
 
 # ----------------- SHELF ITEMS ENDPOINTS -----------------
 
+@router.get("/shelves/{id}/items")
+async def get_shelf_items(
+    id: int,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # Verify shelf belongs to user
+    shelf_query = await db.execute(select(Shelf).where(and_(Shelf.id == id, Shelf.user_id == current_user.id)))
+    shelf = shelf_query.scalar_one_or_none()
+    if not shelf:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shelf not found"
+        )
+
+    # Fetch ShelfItems joined with LibraryItems and ContentSource
+    query = (
+        select(ShelfItem, LibraryItem)
+        .join(LibraryItem, ShelfItem.library_item_id == LibraryItem.id)
+        .options(selectinload(LibraryItem.content_source))
+        .where(ShelfItem.shelf_id == id)
+        .order_by(ShelfItem.sort_order.asc(), ShelfItem.added_at.desc())
+    )
+
+    count_query = select(func.count()).select_from(select(ShelfItem).where(ShelfItem.shelf_id == id).subquery())
+    total = (await db.execute(count_query)).scalar_one()
+
+    items_query = query.limit(limit).offset(offset)
+    result = await db.execute(items_query)
+    
+    response_items = []
+    for shelf_item, library_item in result:
+        response_items.append({
+            "id": shelf_item.library_item_id,
+            "shelf_id": shelf_item.shelf_id,
+            "sort_order": shelf_item.sort_order,
+            "added_at": shelf_item.added_at,
+            "library_item": library_item
+        })
+
+    return {
+        "items": response_items,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
 class AddShelfItemBody(BaseModel):
     library_item_id: int
 

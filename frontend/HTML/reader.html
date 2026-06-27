@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Folio Reader</title>
+    <link rel="stylesheet" href="../CSS/style.css">
+    <link rel="stylesheet" href="../CSS/reader.css">
+    <link rel="shortcut icon" href="/public/favicon.png" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap" rel="stylesheet">
+
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- Epub.js deps -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+</head>
+<body>
+    <div id="error-toast" class="error-toast"></div>
+
+    <!-- Floating navbar — revealed on hover via CSS -->
+    <header class="rdr-nav" id="rdr-nav">
+        <div class="rdr-nav-left">
+            <button class="rdr-icon-btn" id="rdr-back-btn" title="Back to Library">
+                <i data-lucide="arrow-left"></i>
+            </button>
+            <button class="rdr-icon-btn" id="rdr-toc-btn" title="Table of Contents">
+                <i data-lucide="list"></i>
+            </button>
+            <span class="rdr-doc-title" id="rdr-doc-title">Loading…</span>
+        </div>
+        <div class="rdr-nav-right">
+            <button class="rdr-icon-btn" id="rdr-settings-btn" title="Settings"><i data-lucide="more-vertical"></i></button>
+        </div>
+    </header>
+
+    <div class="rdr-shell">
+        <!-- TOC Sidebar -->
+        <aside class="rdr-sidebar" id="rdr-sidebar">
+            <div class="rdr-sidebar-head">
+                <span class="rdr-sidebar-title">Contents</span>
+                <button class="rdr-icon-btn" id="rdr-close-toc"><i data-lucide="x"></i></button>
+            </div>
+            <ul class="rdr-toc-list" id="rdr-toc-list">
+                <li class="rdr-toc-empty">No table of contents</li>
+            </ul>
+        </aside>
+
+        <!-- Main reading area -->
+        <main class="rdr-main" id="rdr-main">
+            <!-- EPUB -->
+            <div class="rdr-engine" id="rdr-epub" style="display:none">
+                <button class="rdr-page-arrow rdr-page-prev" id="epub-prev"><i data-lucide="chevron-left"></i></button>
+                <div id="epub-viewer"></div>
+                <button class="rdr-page-arrow rdr-page-next" id="epub-next"><i data-lucide="chevron-right"></i></button>
+            </div>
+
+            <!-- PDF -->
+            <div class="rdr-engine rdr-pdf-engine" id="rdr-pdf" style="display:none">
+                <div class="rdr-pdf-scroll" id="rdr-pdf-scroll">
+                    <div class="rdr-canvas-wrap" id="rdr-canvas-wrap">
+                        <canvas id="pdf-canvas"></canvas>
+                        <div id="pdf-text-layer" class="rdr-text-layer"></div>
+                    </div>
+                </div>
+                <div class="rdr-pdf-controls">
+                    <button class="rdr-icon-btn" id="pdf-prev"><i data-lucide="chevron-up"></i></button>
+                    <span class="rdr-pdf-page-info"><span id="pdf-cur">1</span> / <span id="pdf-total">—</span></span>
+                    <button class="rdr-icon-btn" id="pdf-next"><i data-lucide="chevron-down"></i></button>
+                </div>
+            </div>
+
+            <!-- Article -->
+            <div class="rdr-engine rdr-article-engine" id="rdr-article" style="display:none">
+                <div class="rdr-article-body" id="rdr-article-body"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Bottom progress -->
+    <div class="rdr-progress-track">
+        <div class="rdr-progress-fill" id="rdr-progress-fill"></div>
+    </div>
+
+    <!-- Settings Panel -->
+    <aside class="rdr-settings-panel" id="rdr-settings-panel">
+        <div class="rdr-settings-header">
+            <h3>Reader Settings</h3>
+            <button class="rdr-icon-btn" id="rdr-close-settings"><i data-lucide="x"></i></button>
+        </div>
+        <div class="rdr-settings-body">
+            <!-- Font Size -->
+            <div class="rdr-setting-group">
+                <label>Font Size</label>
+                <div class="font-size-slider-wrap">
+                    <span style="font-size:0.8rem">A</span>
+                    <input type="range" id="font-size-slider" min="12" max="28" value="16">
+                    <span style="font-size:1.2rem">A</span>
+                </div>
+            </div>
+            
+            <!-- Font Family -->
+            <div class="rdr-setting-group">
+                <label>Font Family</label>
+                <div class="font-grid" id="font-family-grid">
+                    <div class="font-btn active" data-font="'IBM Plex Serif', serif">Serif</div>
+                    <div class="font-btn" data-font="'Georgia', serif">Georgia</div>
+                    <div class="font-btn" data-font="'Lora', serif">Lora</div>
+                    <div class="font-btn" data-font="'Merriweather', serif">Merriweather</div>
+                    <div class="font-btn" data-font="'Open Sans', sans-serif">Open Sans</div>
+                    <div class="font-btn" data-font="monospace">Mono</div>
+                </div>
+            </div>
+            
+            <!-- Theme -->
+            <div class="rdr-setting-group">
+                <label>Theme</label>
+                <div class="theme-grid" id="theme-grid">
+                    <!-- Themes generated by JS -->
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        lucide.createIcons();
+    </script>
+    <script src="../js/reader.js"></script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 import logging
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
-from pydantic import EmailStr
+from pydantic import EmailStr,SecretStr
 from settings import mail_settings
 
 logger = logging.getLogger("email_service")
@@ -30,7 +30,7 @@ async def send_otp_email(email: EmailStr, otp: str):
     try:
         if not mail_settings.MAIL_USERNAME or not mail_settings.MAIL_PASSWORD:
             raise ValueError("Mail configuration is incomplete")
-        
+
         conf = ConnectionConfig(
             MAIL_USERNAME=mail_settings.MAIL_USERNAME,
             MAIL_PASSWORD=mail_settings.MAIL_PASSWORD,
@@ -43,6 +43,10 @@ async def send_otp_email(email: EmailStr, otp: str):
             USE_CREDENTIALS=mail_settings.USE_CREDENTIALS,
             VALIDATE_CERTS=mail_settings.VALIDATE_CERTS
         )
+        
+        # Hack to bypass fastapi-mail / pydantic v2 mismatch
+        from pydantic import SecretStr
+        conf.__dict__["MAIL_PASSWORD"] = SecretStr(mail_settings.MAIL_PASSWORD)
 
         fm = FastMail(conf)
         await fm.send_message(message)

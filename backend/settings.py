@@ -1,13 +1,12 @@
 import os
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
-from pydantic import SecretStr
 
 load_dotenv()
 
 CLOUDINARY_CONFIG = {
-    'cloud_name' : os.getenv('CLOUDINARY_CLOUD_NAME'),
-    'api_key': os.getenv('ClOUDINARY_API_KEY'),
+    'cloud_name': os.getenv('CLOUDINARY_CLOUD_NAME'),
+    'api_key': os.getenv('CLOUDINARY_API_KEY'),
     'api_secret': os.getenv('CLOUDINARY_API_SECRET')
 }
 
@@ -21,5 +20,6 @@ class MailSettings(BaseSettings):
     MAIL_SSL_TLS: bool = os.getenv("MAIL_SSL_TLS", "False").lower() == "true"
     USE_CREDENTIALS: bool = True
     VALIDATE_CERTS: bool = True
+
 
 mail_settings = MailSettings()

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Folio – Library</title>
+    <meta name="description" content="Your personal reading library. Browse, manage, and read your books.">
+    <link rel="stylesheet" href="../CSS/style.css">
+    <link rel="stylesheet" href="../CSS/library.css">
+    <link rel="shortcut icon" href="/public/favicon.png" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sniglet:wght@400;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Error Toast -->
+    <div id="error-toast" class="error-toast"></div>
+
+    <!-- Upload Modal -->
+    <div class="modal-overlay" id="upload-modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2 class="modal-title ibm-plex-serif-medium">Add to Library</h2>
+                <button class="modal-close-btn" id="upload-modal-close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <!-- Tab Switcher -->
+            <div class="modal-tabs">
+                <button class="modal-tab active" id="tab-file" data-tab="file">Upload File</button>
+                <button class="modal-tab" id="tab-url" data-tab="url">From URL</button>
+            </div>
+
+            <!-- File Upload Tab -->
+            <div class="modal-tab-content" id="tab-content-file">
+                <form id="upload-file-form">
+                    <div class="form-group">
+                        <label for="upload-file-input">File (PDF or EPUB)</label>
+                        <input type="file" id="upload-file-input" accept=".pdf,.epub" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="upload-title">Title (optional)</label>
+                        <input type="text" id="upload-title" placeholder="Override auto-detected title">
+                    </div>
+                    <div class="form-group">
+                        <label for="upload-author">Author (optional)</label>
+                        <input type="text" id="upload-author" placeholder="Override auto-detected author">
+                    </div>
+                    <div class="form-group">
+                        <label for="upload-visibility">Visibility</label>
+                        <select id="upload-visibility" class="form-select">
+                            <option value="local">Private (My Library only)</option>
+                            <option value="global">Public (Global Library)</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="auth-button" id="upload-file-btn">Upload File</button>
+                </form>
+            </div>
+
+            <!-- URL Tab -->
+            <div class="modal-tab-content" id="tab-content-url" style="display:none;">
+                <form id="upload-url-form">
+                    <div class="form-group">
+                        <label for="scrape-url">Article URL</label>
+                        <input type="url" id="scrape-url" placeholder="https://example.com/article" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="scrape-visibility">Visibility</label>
+                        <select id="scrape-visibility" class="form-select">
+                            <option value="local">Private (My Library only)</option>
+                            <option value="global">Public (Global Library)</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="auth-button" id="scrape-url-btn">Scrape & Add</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Shelf Modal -->
+    <div class="modal-overlay" id="shelf-modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2 class="modal-title ibm-plex-serif-medium">New Shelf</h2>
+                <button class="modal-close-btn" id="shelf-modal-close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <form id="add-shelf-form">
+                <div class="form-group">
+                    <label for="shelf-name-input">Shelf Name</label>
+                    <input type="text" id="shelf-name-input" placeholder="e.g. Summer Reads" required>
+                </div>
+                <button type="submit" class="auth-button">Create Shelf</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- User Settings Modal -->
+    <div class="modal-overlay" id="user-modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2 class="modal-title ibm-plex-serif-medium">Profile Settings</h2>
+                <button class="modal-close-btn" id="user-modal-close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <form id="update-user-form">
+                <div class="form-group">
+                    <label for="user-display-name">Display Name</label>
+                    <input type="text" id="user-display-name" placeholder="Your name">
+                </div>
+                <div class="form-group">
+                    <label for="user-default-wpm">Default WPM</label>
+                    <input type="number" id="user-default-wpm" placeholder="238" min="50" max="1000">
+                </div>
+                <button type="submit" class="auth-button">Save Changes</button>
+                <button type="button" class="auth-link" id="logout-btn" style="margin-top:0.5rem;display:block;text-align:center;width:100%;">Sign Out</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Content Settings Modal -->
+    <div class="modal-overlay" id="content-modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2 class="modal-title ibm-plex-serif-medium">Edit Content</h2>
+                <button class="modal-close-btn" id="content-modal-close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <form id="update-content-form">
+                <input type="hidden" id="edit-content-id">
+                <div class="form-group">
+                    <label for="edit-content-title">Title</label>
+                    <input type="text" id="edit-content-title" placeholder="Title">
+                </div>
+                <div class="form-group">
+                    <label for="edit-content-author">Author</label>
+                    <input type="text" id="edit-content-author" placeholder="Author">
+                </div>
+                <div class="form-group">
+                    <label for="edit-content-visibility">Visibility</label>
+                    <select id="edit-content-visibility" class="form-select">
+                        <option value="local">Private</option>
+                        <option value="global">Public</option>
+                    </select>
+                </div>
+                <button type="submit" class="auth-button">Save Changes</button>
+                <button type="button" class="auth-link delete-btn" id="delete-content-btn" style="margin-top:0.5rem;display:block;text-align:center;width:100%;color:#e74c3c;">Delete Content</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Item to Shelf Modal -->
+    <div class="modal-overlay" id="add-to-shelf-modal-overlay">
+        <div class="modal-box">
+            <button class="modal-close" id="add-to-shelf-modal-close"><i data-lucide="x"></i></button>
+            <h2 class="bricolage-grotesque-medium">Add to Shelf</h2>
+            <p>Select a shelf to add this book to:</p>
+            <form id="add-to-shelf-form">
+                <input type="hidden" id="add-to-shelf-item-id">
+                <div class="form-group">
+                    <label>Shelf</label>
+                    <select id="add-to-shelf-select" required>
+                        <!-- Options injected by JS -->
+                    </select>
+                </div>
+                <button type="submit" class="auth-button">Add to Shelf</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Set Cover Image Modal -->
+    <div class="modal-overlay" id="set-cover-modal-overlay">
+        <div class="modal-box">
+            <button class="modal-close" id="set-cover-modal-close"><i data-lucide="x"></i></button>
+            <h2 class="bricolage-grotesque-medium">Set Cover Image</h2>
+            <form id="set-cover-form">
+                <input type="hidden" id="set-cover-content-id">
+                <div class="form-group">
+                    <label>Cover Image (JPG/PNG)</label>
+                    <input type="file" id="set-cover-file" accept="image/*" required>
+                </div>
+                <button type="submit" class="auth-button">Upload Cover</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Smart Queue Modal -->
+    <div class="modal-overlay" id="smart-queue-modal-overlay">
+        <div class="modal-box" style="max-width: 600px;">
+            <button class="modal-close" id="smart-queue-modal-close"><i data-lucide="x"></i></button>
+            <h2 class="bricolage-grotesque-medium">✨ Smart Queue</h2>
+            <p>Tell us how much time you have, and we'll suggest what to read next based on your preferences.</p>
+            <form id="smart-queue-form">
+                <div class="form-group">
+                    <label>Time Budget (minutes)</label>
+                    <input type="number" id="sq-time-budget" min="5" value="30" required>
+                </div>
+                <button type="submit" class="auth-button" id="sq-submit-btn">Get Suggestions</button>
+            </form>
+            <div id="sq-results-container" style="display:none; margin-top: 1.5rem;">
+                <!-- Result cards injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Panel Modal -->
+    <div class="modal-overlay" id="ai-panel-overlay">
+        <div class="modal-box" style="max-width: 400px; text-align: left;">
+            <button class="modal-close" id="ai-panel-close"><i data-lucide="x"></i></button>
+            <h2 class="bricolage-grotesque-medium">✨ AI Assistant</h2>
+            <div style="margin-top: 1.5rem;">
+                <div class="ai-feature-card" style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">Understand Concept</h4>
+                    <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Explain a complex topic from your library.</p>
+                    <button class="auth-button">Coming soon</button>
+                </div>
+                <div class="ai-feature-card" style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">Learning Path</h4>
+                    <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Generate a curriculum from your books.</p>
+                    <button class="auth-button">Coming soon</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Shell -->
+    <div class="lib-layout">
+        <!-- Sidebar -->
+        <aside class="lib-sidebar" id="lib-sidebar">
+            <div class="lib-sidebar-header">
+                <span class="ibm-plex-serif-medium">folio</span>
+            </div>
+
+            <nav class="lib-nav">
+                <p class="lib-nav-label">Library</p>
+                <ul class="lib-nav-list">
+                    <li class="lib-nav-item active" id="nav-local" data-view="local">
+                        <i data-lucide="library-big"></i>
+                        <span>My Library</span>
+                    </li>
+                    <li class="lib-nav-item" id="nav-global" data-view="global">
+                        <i data-lucide="globe"></i>
+                        <span>Global Library</span>
+                    </li>
+                    <li class="lib-nav-item" id="nav-ai" style="color: #9b59b6;">
+                        <i data-lucide="sparkles"></i>
+                        <span>AI Assistant</span>
+                    </li>
+                </ul>
+
+                <div class="lib-nav-shelves-header">
+                    <p class="lib-nav-label">Shelves</p>
+                    <button class="icon-circle-btn" id="add-shelf-btn" title="New Shelf">
+                        <i data-lucide="plus"></i>
+                    </button>
+                </div>
+                <ul class="lib-nav-list" id="shelves-nav-list">
+                    <!-- Shelves injected here -->
+                </ul>
+            </nav>
+
+            <div class="lib-sidebar-footer">
+                <button class="user-profile-btn" id="user-profile-btn">
+                    <div class="user-avatar"><i data-lucide="user"></i></div>
+                    <span class="user-display-name" id="sidebar-display-name">Loading…</span>
+                    <span id="sidebar-wpm-badge" style="font-size:0.75rem; background:var(--bg-primary); padding:0.2rem 0.4rem; border-radius:4px; margin-left:auto; border:1px solid var(--border-primary)">...</span>
+                    <i data-lucide="settings" class="user-settings-icon" style="margin-left:0.5rem"></i>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main -->
+        <main class="lib-main">
+            <!-- Topbar -->
+            <header class="lib-topbar">
+                <h1 class="lib-view-title" id="lib-view-title">My Library</h1>
+                <div class="lib-topbar-right">
+                    <!-- Search -->
+                    <div class="lib-search-wrap">
+                        <i data-lucide="search" class="lib-search-icon"></i>
+                        <input type="text" id="search-input" class="lib-search-input" placeholder="Search books…">
+                    </div>
+                    <!-- Theme toggle (matches index.html) -->
+                    <div class="theme-toggle" id="theme-toggle">
+                        <i class="fas fa-sun" id="theme-icon"></i>
+                    </div>
+                    <button class="upload-btn" id="smart-queue-btn" style="background: #9b59b6; border-color: #9b59b6; color: white; margin-right: 0.5rem;">
+                        <i data-lucide="sparkles"></i>
+                        <span>Smart Queue</span>
+                    </button>
+                    <!-- Upload -->
+                    <button class="upload-btn" id="upload-btn">
+                        <i data-lucide="upload"></i>
+                        <span>Add Content</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Book Grid -->
+            <div class="lib-scroll">
+                <div class="book-grid" id="book-grid">
+                    <!-- Cards injected by JS -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script>lucide.createIcons();</script>
+    <script src="../js/library.js"></script>
+</body>
+</html>
