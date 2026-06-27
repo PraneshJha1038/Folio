@@ -268,3 +268,20 @@ class SuggestionRequestResponse(BaseModel):
     completed_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
+
+class AIJobStatus(str, Enum):
+    pending = "pending"
+    completed = "completed"
+    failed = "failed"
+
+class AIJobResultResponse(BaseModel):
+    id: int
+    user_id: int
+    feature_type: str
+    status: AIJobStatus
+    result: list | dict | None = None
+    source: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

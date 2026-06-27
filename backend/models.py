@@ -5,6 +5,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from database import Base
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
+
+@compiles(JSONB, "sqlite")
+def compile_jsonb_sqlite(type_, compiler, **kw):
+    return "JSON"
 
 GENRES = [
     'Action & Adventure', 'Academic Paper', 'Agriculture', 'Anthropology', 
@@ -56,12 +62,32 @@ class ContentSource(Base):
     file_path: Mapped[str | None] = mapped_column(Text)
     raw_text: Mapped[str | None] = mapped_column(Text)
     cover_image_url: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(String(50))
+    difficulty: Mapped[str | None] = mapped_column(String(10))
+    key_concepts: Mapped[list | None] = mapped_column(JSONB)
+    roi_score: Mapped[float | None] = mapped_column(Float)
+    worth_reading_cache: Mapped[dict | None] = mapped_column(JSONB)
+    time_sensitivity: Mapped[str | None] = mapped_column(String(20))
+    ai_processed: Mapped[bool] = mapped_column(Boolean, default=False)
     word_count: Mapped[int | None] = mapped_column(Integer)
     visibility: Mapped[str] = mapped_column(String(10), default="local")
     created_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
 
     __table_args__ = (
+        CheckConstraint(
+            "difficulty IS NULL OR difficulty IN ('Easy', 'Medium', 'Hard')",
+            name="check_difficulty"
+        ),
+        CheckConstraint(
+            "roi_score IS NULL OR (roi_score >= 0 AND roi_score <= 10)",
+            name="check_roi_score"
+        ),
+        CheckConstraint(
+            "time_sensitivity IS NULL OR time_sensitivity IN ('Evergreen', 'Standard', 'Time-Sensitive')",
+            name="check_time_sensitivity"
+        ),
         CheckConstraint("type IN ('article', 'pdf', 'epub')", name="check_content_type"),
         CheckConstraint("visibility IN ('local', 'global')", name="check_visibility"),
         CheckConstraint("source_url IS NOT NULL OR file_path IS NOT NULL", name="chk_has_source"),
@@ -120,6 +146,8 @@ class LibraryItem(Base):
     current_position: Mapped[str | None] = mapped_column(String(255))
     is_finished: Mapped[bool] = mapped_column(Boolean, default=False)
     finished_at: Mapped[object | None] = mapped_column(TIMESTAMP(timezone=True))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[object | None] = mapped_column(TIMESTAMP(timezone=True))
     
     content_source: Mapped["ContentSource"] = relationship("ContentSource")
     __table_args__ = (
@@ -195,7 +223,7 @@ class PendingOtp(Base):
     expires_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True))
     created_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
 
-from sqlalchemy.dialects.postgresql import JSONB
+
 
 class SuggestionRequest(Base):
     __tablename__ = "suggestion_requests"
@@ -209,4 +237,20 @@ class SuggestionRequest(Base):
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'completed', 'failed')", name="check_suggestion_status"),
     )
-
+
+class AIJobResult(Base):
+    __tablename__ = "ai_job_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    feature_type: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    result: Mapped[dict | list | None] = mapped_column(JSONB)
+    source: Mapped[str] = mapped_column(String(20)) # 'ai' or 'fallback'
+    created_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'completed', 'failed')", name="check_ai_job_status"),
+        Index("idx_ai_job_results_user_feature", "user_id", "feature_type"),
+    )

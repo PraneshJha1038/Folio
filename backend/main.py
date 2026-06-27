@@ -8,6 +8,7 @@ from router.content import router as content_router
 from router.library import router as library_router
 from router.reading import router as reading_router
 from router.suggestions import router as suggestions_router
+from router.ai_features import router as ai_router
 
 app = FastAPI(
     title="folio API",
@@ -31,6 +32,7 @@ app.include_router(content_router)
 app.include_router(library_router)
 app.include_router(reading_router)
 app.include_router(suggestions_router)
+app.include_router(ai_router)
 
 @app.get("/")
 async def hello():

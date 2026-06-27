@@ -1,39 +1,11 @@
-import os
+import logging
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from pydantic import EmailStr
-import logging
+from settings import mail_settings
 
 logger = logging.getLogger("email_service")
 
-# Configurations for FastAPI Mail
-# Using defaults/fallbacks to allow run without SMTP config
-MAIL_USERNAME = os.getenv("MAIL_USERNAME", "mock_user")
-MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "mock_pass")
-MAIL_FROM = os.getenv("MAIL_FROM", "no-reply@folio.app")
-MAIL_PORT = int(os.getenv("MAIL_PORT", 587))
-MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
-MAIL_STARTTLS = os.getenv("MAIL_STARTTLS", "True").lower() == "true"
-MAIL_SSL_TLS = os.getenv("MAIL_SSL_TLS", "False").lower() == "true"
-USE_MOCK_EMAIL = os.getenv("USE_MOCK_EMAIL", "True").lower() == "true"
-
-conf = ConnectionConfig(
-    MAIL_USERNAME=MAIL_USERNAME,
-    MAIL_PASSWORD=MAIL_PASSWORD,
-    MAIL_FROM=MAIL_FROM,
-    MAIL_PORT=MAIL_PORT,
-    MAIL_SERVER=MAIL_SERVER,
-    MAIL_FROM_NAME="Folio App",
-    MAIL_STARTTLS=MAIL_STARTTLS,
-    MAIL_SSL_TLS=MAIL_SSL_TLS,
-    USE_CREDENTIALS=not USE_MOCK_EMAIL,
-    VALIDATE_CERTS=True
-)
-
 async def send_otp_email(email: EmailStr, otp: str):
-    """
-    Sends a 6-digit OTP verification email to the user.
-    If USE_MOCK_EMAIL is True, it will just log/print the OTP.
-    """
     subject = "Your Folio Verification Code"
     body = f"""
     <html>
@@ -48,11 +20,6 @@ async def send_otp_email(email: EmailStr, otp: str):
     </html>
     """
 
-    if USE_MOCK_EMAIL or MAIL_USERNAME == "mock_user":
-        logger.info(f"[MOCK EMAIL] To: {email} | OTP: {otp}")
-        print(f"\n========================================\n[MOCK EMAIL] TO: {email}\nOTP CODE: {otp}\n========================================\n")
-        return
-
     message = MessageSchema(
         subject=subject,
         recipients=[email],
@@ -60,5 +27,26 @@ async def send_otp_email(email: EmailStr, otp: str):
         subtype=MessageType.html
     )
 
-    fm = FastMail(conf)
-    await fm.send_message(message)
+    try:
+        if not mail_settings.MAIL_USERNAME or not mail_settings.MAIL_PASSWORD:
+            raise ValueError("Mail configuration is incomplete")
+        
+        conf = ConnectionConfig(
+            MAIL_USERNAME=mail_settings.MAIL_USERNAME,
+            MAIL_PASSWORD=mail_settings.MAIL_PASSWORD,
+            MAIL_FROM=mail_settings.MAIL_FROM,
+            MAIL_PORT=mail_settings.MAIL_PORT,
+            MAIL_SERVER=mail_settings.MAIL_SERVER,
+            MAIL_FROM_NAME="Folio App",
+            MAIL_STARTTLS=mail_settings.MAIL_STARTTLS,
+            MAIL_SSL_TLS=mail_settings.MAIL_SSL_TLS,
+            USE_CREDENTIALS=mail_settings.USE_CREDENTIALS,
+            VALIDATE_CERTS=mail_settings.VALIDATE_CERTS
+        )
+
+        fm = FastMail(conf)
+        await fm.send_message(message)
+        logger.info(f"OTP email sent successfully to {email}")
+    except Exception as e:
+        logger.warning(f"Failed to send email to {email}: {e}. Falling back to mock email.")
+        print(f"\n========================================\n[FALLBACK MOCK EMAIL] TO: {email}\nOTP CODE: {otp}\n========================================\n")

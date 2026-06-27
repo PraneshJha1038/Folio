@@ -10,7 +10,7 @@ from dependencies import get_current_user, security
 from models import ContentSource, ContentGenre, ContentReport, User
 from auth_utils import decode_access_token
 from schemas import ContentSourceResponse, ContentReportResponse, Visibility, ContentType, ContentGenreCreate
-from services.storage import upload_file_to_cloudinary
+from services.storage import upload_file_to_cloudinary, extract_epub_cover_and_upload
 from services.scraper import scrape_url
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -54,6 +54,13 @@ async def upload_content(
     # 1. Upload to Cloudinary
     file_url = upload_file_to_cloudinary(file)
     
+    # 1b. Extract and upload cover image for EPUB
+    cover_image_url = None
+    if content_type == ContentType.epub:
+        file.file.seek(0)
+        file_content = file.file.read()
+        cover_image_url = extract_epub_cover_and_upload(file_content)
+    
     # Estimate word count if possible (or default to 0 for uploads, calibrated later)
     # Simple default for hackathon MVP uploads
     word_count = 5000 
@@ -67,6 +74,7 @@ async def upload_content(
         title=db_title,
         author=author,
         file_path=file_url,
+        cover_image_url=cover_image_url,
         word_count=word_count,
         visibility=visibility.value
     )
@@ -247,3 +255,28 @@ async def add_content_genre(
     await db.commit()
     
     return {"genre": new_genre.genre}
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_content(
+    id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # Check if content exists
+    result = await db.execute(select(ContentSource).where(ContentSource.id == id))
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Content not found"
+        )
+        
+    # Access checks
+    if content.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own content"
+        )
+        
+    await db.delete(content)
+    await db.commit()

@@ -9,6 +9,7 @@ from database import get_db, AsyncSessionLocal
 from dependencies import get_current_user
 from models import SuggestionRequest, LibraryItem, ContentSource, ContentGenre, UserGenrePreference, User
 from schemas import SuggestionRequestResponse
+from router.ai_features import call_ai_service
 
 router = APIRouter(prefix="/suggestions", tags=["suggestions"])
 
@@ -64,52 +65,74 @@ async def run_suggestion_algorithm(request_id: int, user_id: int, time_budget: i
             )
             unfinished_items = unfinished_query.scalars().all()
             
-            candidates = []
-            max_allowed_time = time_budget * 1.1 # 10% tolerance
+            # Group B AI Feature: Optimize Queue
+            ai_payload = {
+                "available_minutes": time_budget,
+                "articles": [],
+                "user_preferred_topics": list(user_genres)
+            }
             
             for item in unfinished_items:
                 cs = item.content_source
-                if not cs or not cs.word_count:
-                    continue
-                    
+                if not cs or not cs.word_count: continue
                 est_minutes = cs.word_count / wpm
-                if est_minutes <= max_allowed_time:
-                    # Fetch genres for this specific content source
-                    cg_query = await db.execute(
-                        select(ContentGenre.genre).where(ContentGenre.content_id == cs.id)
-                    )
-                    item_genres = set(cg_query.scalars().all())
-                    
-                    # Compute genre match
-                    if not item_genres:
-                        genre_match = 0.0
-                    else:
-                        overlap = item_genres.intersection(user_genres)
-                        genre_match = len(overlap) / len(item_genres)
-                        
-                    # Compute time fit
-                    time_fit = est_minutes / time_budget
-                    if time_fit > 1.0:
-                        # Since it's within 10% tolerance, cap time_fit at 1.0 or compute ratio
-                        time_fit = 1.0 - (time_fit - 1.0)
-                        
-                    score = (0.6 * genre_match) + (0.4 * time_fit)
-                    
-                    reason = f"Estimated reading time matches budget ({int(est_minutes)} min)."
-                    if genre_match > 0:
-                        reason += f" Matches your interest in {', '.join(overlap)}."
-                        
-                    candidates.append({
-                        "library_item_id": item.id,
-                        "score": round(score, 3),
-                        "reason": reason,
-                        "title": cs.title,
-                        "estimated_minutes": round(est_minutes, 1)
-                    })
+                cg_query = await db.execute(
+                    select(ContentGenre.genre).where(ContentGenre.content_id == cs.id)
+                )
+                item_genres = set(cg_query.scalars().all())
+                
+                ai_payload["articles"].append({
+                    "id": item.id,
+                    "title": cs.title,
+                    "estimated_minutes": round(est_minutes, 1),
+                    "genres": list(item_genres)
+                })
+
+            ai_res = await call_ai_service("/api/queue/optimize", ai_payload)
             
-            # Sort by score descending and take top 5
-            candidates.sort(key=lambda x: x["score"], reverse=True)
-            top_5 = candidates[:5]
+            if ai_res and isinstance(ai_res, list):
+                top_5 = ai_res[:5]
+                # Format to match existing schema if AI doesn't exactly match
+                for i in range(len(top_5)):
+                    if "library_item_id" not in top_5[i] and "id" in top_5[i]:
+                        top_5[i]["library_item_id"] = top_5[i]["id"]
+            else:
+                # FALLBACK LOGIC
+                candidates = []
+                max_allowed_time = time_budget * 1.1 # 10% tolerance
+                
+                for article in ai_payload["articles"]:
+                    est_minutes = article["estimated_minutes"]
+                    if est_minutes <= max_allowed_time:
+                        item_genres = set(article["genres"])
+                        
+                        if not item_genres:
+                            genre_match = 0.0
+                        else:
+                            overlap = item_genres.intersection(user_genres)
+                            genre_match = len(overlap) / len(item_genres)
+                            
+                        time_fit = est_minutes / time_budget
+                        if time_fit > 1.0:
+                            time_fit = 1.0 - (time_fit - 1.0)
+                            
+                        score = (0.6 * genre_match) + (0.4 * time_fit)
+                        
+                        reason = f"Estimated reading time matches budget ({int(est_minutes)} min)."
+                        if genre_match > 0:
+                            overlap = item_genres.intersection(user_genres)
+                            reason += f" Matches your interest in {', '.join(overlap)}."
+                            
+                        candidates.append({
+                            "library_item_id": article["id"],
+                            "score": round(score, 3),
+                            "reason": reason,
+                            "title": article["title"],
+                            "estimated_minutes": est_minutes
+                        })
+                
+                candidates.sort(key=lambda x: x["score"], reverse=True)
+                top_5 = candidates[:5]
             
             # Update suggestion request
             req_query = await db.execute(select(SuggestionRequest).where(SuggestionRequest.id == request_id))
