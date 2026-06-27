@@ -154,10 +154,20 @@ class LibraryManager {
         // AI Panel
         document.getElementById('nav-ai').addEventListener('click', () => {
             document.getElementById('ai-panel-overlay').classList.add('active');
+            const select = document.getElementById('ai-understand-book-select');
+            select.innerHTML = '';
+            (this.allBooks || []).forEach(book => {
+                const opt = document.createElement('option');
+                opt.value = book.id; // ContentSource ID
+                opt.textContent = book.title;
+                select.appendChild(opt);
+            });
         });
         document.getElementById('ai-panel-close').addEventListener('click', () => {
             document.getElementById('ai-panel-overlay').classList.remove('active');
         });
+        document.getElementById('ai-understand-btn').addEventListener('click', () => this._handleAiUnderstand());
+        document.getElementById('ai-learning-path-btn').addEventListener('click', () => this._handleAiLearningPath());
 
         // Close dropdowns when clicking outside
         document.addEventListener('click', (e) => {
@@ -776,6 +786,142 @@ class LibraryManager {
             if (!res.ok) throw new Error((await res.json()).detail || 'Delete failed');
             await this.loadView(this.currentView);
         } catch (err) { showError(err.message); }
+    }
+
+    async _handleAiUnderstand() {
+        const select = document.getElementById('ai-understand-book-select');
+        const bookId = select.value;
+        if (!bookId) { showError('Please select a book.'); return; }
+
+        const btn = document.getElementById('ai-understand-btn');
+        const resultContainer = document.getElementById('ai-understand-results');
+        
+        btn.textContent = 'Analyzing...';
+        btn.disabled = true;
+        resultContainer.style.display = 'block';
+        resultContainer.innerHTML = '<div class="spinner">Analyzing content via AI...</div>';
+
+        try {
+            const res = await apiFetch('/ai/understand', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content_id: parseInt(bookId, 10) })
+            });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Analyze request failed');
+            
+            // Poll /content/{id}
+            const poll = async () => {
+                try {
+                    const cRes = await apiFetch(`/content/${bookId}`);
+                    if (!cRes.ok) throw new Error('Failed to retrieve content');
+                    const content = await cRes.json();
+                    
+                    if (content.ai_processed) {
+                        btn.textContent = 'Analyze Concept';
+                        btn.disabled = false;
+                        
+                        const keyConceptsList = (content.key_concepts || []).map(c => `<li>${c}</li>`).join('');
+                        resultContainer.innerHTML = `
+                            <div style="margin-top: 1rem; border-top: 1px solid var(--border-primary); padding-top: 1rem;">
+                                <h5 style="margin: 0 0 0.5rem 0; color: #9b59b6;">Difficulty: ${content.difficulty || 'Unknown'}</h5>
+                                <h5 style="margin: 0 0 0.25rem 0;">Summary</h5>
+                                <p style="margin: 0 0 1rem 0; font-size: 0.88rem; line-height: 1.4;">${content.summary || 'No summary available.'}</p>
+                                <h5 style="margin: 0 0 0.25rem 0;">Key Concepts</h5>
+                                <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.88rem; line-height: 1.4;">${keyConceptsList || '<li>None</li>'}</ul>
+                            </div>
+                        `;
+                    } else {
+                        setTimeout(poll, 3000);
+                    }
+                } catch (err) {
+                    showError(err.message);
+                    btn.textContent = 'Analyze Concept';
+                    btn.disabled = false;
+                    resultContainer.style.display = 'none';
+                }
+            };
+            setTimeout(poll, 1500);
+        } catch (err) {
+            showError(err.message);
+            btn.textContent = 'Analyze Concept';
+            btn.disabled = false;
+            resultContainer.style.display = 'none';
+        }
+    }
+
+    async _handleAiLearningPath() {
+        const topicInput = document.getElementById('ai-learning-path-topic');
+        const topic = topicInput.value.trim();
+        if (!topic) { showError('Please enter a topic.'); return; }
+
+        const btn = document.getElementById('ai-learning-path-btn');
+        const resultContainer = document.getElementById('ai-learning-path-results');
+        
+        btn.textContent = 'Generating...';
+        btn.disabled = true;
+        resultContainer.style.display = 'block';
+        resultContainer.innerHTML = '<div class="spinner">Curating curriculum from library...</div>';
+
+        try {
+            const res = await apiFetch('/ai/learning-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic: topic })
+            });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Failed to start learning path');
+            const data = await res.json();
+            const jobId = data.request_id;
+            
+            // Poll /ai/jobs/{id}
+            const poll = async () => {
+                try {
+                    const jRes = await apiFetch(`/ai/jobs/${jobId}`);
+                    if (!jRes.ok) throw new Error('Failed to query job status');
+                    const job = await jRes.json();
+                    
+                    if (job.status === 'completed') {
+                        btn.textContent = 'Generate Path';
+                        btn.disabled = false;
+                        
+                        const curriculum = job.result?.curriculum || [];
+                        if (curriculum.length === 0) {
+                            resultContainer.innerHTML = '<p>No curriculum path generated.</p>';
+                            return;
+                        }
+                        
+                        const phasesHtml = curriculum.map(p => `
+                            <div style="margin-top: 0.8rem; border-left: 2px solid #9b59b6; padding-left: 0.8rem;">
+                                <strong style="color: #9b59b6;">${p.phase}</strong>
+                                <p style="margin: 0.2rem 0; font-size: 0.85rem; line-height: 1.3;">${p.description}</p>
+                                <span style="font-size: 0.75rem; color: var(--text-light)">Books: ${p.resources.join(', ')}</span>
+                            </div>
+                        `).join('');
+                        
+                        resultContainer.innerHTML = `
+                            <div style="margin-top: 1rem; border-top: 1px solid var(--border-primary); padding-top: 1rem;">
+                                <h5 style="margin: 0;">Your Personalized Learning Path</h5>
+                                ${phasesHtml}
+                            </div>
+                        `;
+                    } else if (job.status === 'failed') {
+                        throw new Error('AI Job failed');
+                    } else {
+                        setTimeout(poll, 3000);
+                    }
+                } catch (err) {
+                    showError(err.message);
+                    btn.textContent = 'Generate Path';
+                    btn.disabled = false;
+                    resultContainer.style.display = 'none';
+                }
+            };
+            setTimeout(poll, 1500);
+        } catch (err) {
+            showError(err.message);
+            btn.textContent = 'Generate Path';
+            btn.disabled = false;
+            resultContainer.style.display = 'none';
+        }
     }
 }
 

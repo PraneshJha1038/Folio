@@ -211,19 +211,32 @@
 
     <!-- AI Panel Modal -->
     <div class="modal-overlay" id="ai-panel-overlay">
-        <div class="modal-box" style="max-width: 400px; text-align: left;">
+        <div class="modal-box" style="max-width: 450px; text-align: left; max-height: 85vh; overflow-y: auto;">
             <button class="modal-close" id="ai-panel-close"><i data-lucide="x"></i></button>
             <h2 class="bricolage-grotesque-medium">✨ AI Assistant</h2>
             <div style="margin-top: 1.5rem;">
+                <!-- Understand Concept -->
                 <div class="ai-feature-card" style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px;">
                     <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">Understand Concept</h4>
-                    <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Explain a complex topic from your library.</p>
-                    <button class="auth-button">Coming soon</button>
+                    <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Analyze a book to generate summaries, difficulty, and key concepts.</p>
+                    <div class="form-group" style="margin-bottom: 0.5rem;">
+                        <label>Select Book</label>
+                        <select id="ai-understand-book-select" style="width: 100%; padding: 0.5rem; border-radius: 4px; background: var(--bg-primary); border: 1px solid var(--border-primary); color: var(--text-primary);"></select>
+                    </div>
+                    <button class="auth-button" id="ai-understand-btn">Analyze Concept</button>
+                    <div id="ai-understand-results" style="margin-top: 1rem; font-size: 0.95rem; display: none;"></div>
                 </div>
+
+                <!-- Learning Path -->
                 <div class="ai-feature-card" style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;">
                     <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">Learning Path</h4>
-                    <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Generate a curriculum from your books.</p>
-                    <button class="auth-button">Coming soon</button>
+                    <p style="margin: 0 0 1rem 0; font-size: 0.9rem;">Generate a structured study curriculum from your library books.</p>
+                    <div class="form-group" style="margin-bottom: 0.5rem;">
+                        <label>Topic / Goal</label>
+                        <input type="text" id="ai-learning-path-topic" placeholder="e.g. Learn Machine Learning basics" style="width: 100%; padding: 0.5rem; border-radius: 4px; background: var(--bg-primary); border: 1px solid var(--border-primary); color: var(--text-primary);">
+                    </div>
+                    <button class="auth-button" id="ai-learning-path-btn">Generate Path</button>
+                    <div id="ai-learning-path-results" style="margin-top: 1rem; font-size: 0.95rem; display: none;"></div>
                 </div>
             </div>
         </div>

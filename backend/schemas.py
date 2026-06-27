@@ -106,6 +106,10 @@ class ContentSourceResponse(BaseModel):
     cover_image_url: str | None
     word_count: int | None
     visibility: Visibility
+    summary: str | None = None
+    difficulty: str | None = None
+    key_concepts: list | None = None
+    ai_processed: bool = False
     created_at: datetime
     updated_at: datetime
 
