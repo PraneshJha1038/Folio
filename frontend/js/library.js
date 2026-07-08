@@ -1,928 +1,893 @@
-/* ============================================================
-   library.js — Full LibraryManager rewrite
-   Fixes: theme, sidebar toggle, search, upload modal,
-          three-dot settings, shelf creation, user settings
-   ============================================================ */
+// library.js — Folio Library Page (Redesigned)
 
-const API_BASE = 'http://127.0.0.1:8000';
-
-/* ── Utility: error toast ─────────────────────────────────── */
-function showError(message, duration = 5000) {
-    const toast = document.getElementById('error-toast');
-    if (!toast) return;
-    toast.textContent = message;
-    toast.classList.add('show');
-    clearTimeout(toast._timeout);
-    toast._timeout = setTimeout(() => toast.classList.remove('show'), duration);
-}
-
-/* ── Utility: open / close modal ─────────────────────────── */
-function openModal(id) {
-    const el = document.getElementById(id);
-    if (el) el.classList.add('active');
-}
-function closeModal(id) {
-    const el = document.getElementById(id);
-    if (el) el.classList.remove('active');
-}
-
-/* ── Utility: API fetch with auth ────────────────────────── */
-async function apiFetch(path, options = {}) {
-    const token = localStorage.getItem('access_token');
-    const headers = { 'Authorization': `Bearer ${token}`, ...(options.headers || {}) };
-    const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-    if (response.status === 401) {
-        localStorage.removeItem('access_token');
+document.addEventListener('DOMContentLoaded', () => {
+    if (!localStorage.getItem('access_token')) {
         window.location.href = 'index.html';
         return;
     }
-    return response;
-}
 
-/* ══════════════════════════════════════════════════════════
-   ThemeManager — mirrors index.html ThemeManager exactly
-   ══════════════════════════════════════════════════════════ */
-class ThemeManager {
-    constructor() {
-        this.themeToggle = document.getElementById('theme-toggle');
-        this.themeIcon   = document.getElementById('theme-icon');
-        const saved = localStorage.getItem('theme') || 'dark';
-        this.setTheme(saved);
-        this.themeToggle?.addEventListener('click', () => this.toggleTheme());
-    }
-    setTheme(theme) {
+    // ─── State ───────────────────────────────────────────────────────────
+    let allItems = [];          // local library items
+    let currentMode = 'local';  // 'local' | 'global'
+    let pendingFile = null;     // File object waiting for visibility selection
+    let currentDetailContent = null;  // content obj open in details modal
+    let currentDetailLibItem = null;  // library_item obj (null for global)
+    let currentUserId = getUserIdFromToken();
+    let shelves = [];           // array of shelf objects
+
+    // ─── Theme ───────────────────────────────────────────────────────────
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    applyTheme(savedTheme);
+
+    document.getElementById('btn-theme').addEventListener('click', () => {
+        const cur = document.documentElement.getAttribute('data-theme');
+        applyTheme(cur === 'light' ? 'dark' : 'light');
+    });
+
+    function applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
-        if (this.themeIcon) {
-            // index.html uses FontAwesome classes, not lucide
-            this.themeIcon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+        document.getElementById('theme-sun').style.display = theme === 'light' ? 'none' : '';
+        document.getElementById('theme-moon').style.display = theme === 'light' ? '' : 'none';
+    }
+
+    // ─── Modal helpers ───────────────────────────────────────────────────
+    function openModal(id) {
+        const el = document.getElementById(id);
+        if (el) { el.classList.add('open'); el.setAttribute('aria-hidden', 'false'); }
+    }
+    function closeModal(id) {
+        const el = document.getElementById(id);
+        if (el) { el.classList.remove('open'); el.setAttribute('aria-hidden', 'true'); }
+    }
+
+    // Close on backdrop click or [data-close] button
+    document.querySelectorAll('.lib-modal-backdrop').forEach(backdrop => {
+        backdrop.addEventListener('click', e => {
+            if (e.target === backdrop) closeModal(backdrop.id);
+        });
+    });
+    document.querySelectorAll('[data-close]').forEach(btn => {
+        btn.addEventListener('click', () => closeModal(btn.dataset.close));
+    });
+
+    // ─── Add popover ─────────────────────────────────────────────────────
+    const addPopover = document.getElementById('add-popover');
+    const btnAdd = document.getElementById('btn-add');
+
+    btnAdd.addEventListener('click', e => {
+        e.stopPropagation();
+        addPopover.classList.toggle('open');
+    });
+
+    document.addEventListener('click', e => {
+        if (!addPopover.contains(e.target) && e.target !== btnAdd) {
+            addPopover.classList.remove('open');
         }
-    }
-    toggleTheme() {
-        const current = document.documentElement.getAttribute('data-theme');
-        this.setTheme(current === 'light' ? 'dark' : 'light');
-    }
-}
-
-/* ══════════════════════════════════════════════════════════
-   LibraryManager
-   ══════════════════════════════════════════════════════════ */
-class LibraryManager {
-    constructor() {
-        if (!localStorage.getItem('access_token')) {
-            window.location.href = 'index.html';
-            return;
+        // Close shelf dropdowns if clicking outside
+        if (!e.target.closest('.lib-shelf-dropdown') && !e.target.closest('.lib-card-extra-btn')) {
+            document.querySelectorAll('.lib-shelf-dropdown').forEach(d => d.classList.remove('open'));
         }
+    });
 
-        this.currentView  = 'local';
-        this.allBooks     = [];          // full list for current view
-        this.searchQuery  = '';
-        this.activeDropdown = null;      // currently open three-dot menu
+    // ─── Top Bar Navigation ───────────────────────────────────────────────
+    document.getElementById('btn-home').addEventListener('click', () => {
+        searchInput.value = '';
+        loadLocalLibrary();
+    });
 
-        this._bindDOM();
-        this._bindEvents();
-        this.fetchUserProfile();
-        this.fetchShelves();
-        this.loadView('local');
-    }
+    document.getElementById('btn-global').addEventListener('click', () => {
+        searchInput.value = '';
+        currentMode = 'global';
+        updateSearchPlaceholder();
+        loadGlobalLibrary();
+    });
 
-    /* ── DOM refs ───────────────────────────────────────── */
-    _bindDOM() {
-        this.bookGrid      = document.getElementById('book-grid');
-        this.viewTitle     = document.getElementById('lib-view-title');
-        this.sidebarName   = document.getElementById('sidebar-display-name');
-        this.searchInput   = document.getElementById('search-input');
-        this.shelvesList   = document.getElementById('shelves-nav-list');
-    }
+    document.getElementById('btn-shelves').addEventListener('click', () => {
+        openModal('shelves-modal');
+        loadShelves();
+    });
 
-    /* ── Event listeners ────────────────────────────────── */
-    _bindEvents() {
-        // Sidebar view toggle
-        document.getElementById('nav-local').addEventListener('click',  () => this.loadView('local'));
-        document.getElementById('nav-global').addEventListener('click', () => this.loadView('global'));
+    // Popover rows
+    document.getElementById('pop-from-device').addEventListener('click', () => {
+        addPopover.classList.remove('open');
+        document.getElementById('file-input-hidden').click();
+    });
 
-        // Search — live filter
-        this.searchInput.addEventListener('input', () => {
-            this.searchQuery = this.searchInput.value.toLowerCase().trim();
-            this._renderGrid(this._filtered());
+    document.getElementById('pop-from-url').addEventListener('click', () => {
+        addPopover.classList.remove('open');
+        // Reset the URL modal visibility toggle to 'local'
+        setActiveVis(document.querySelector('#url-modal .lib-vis-toggle'), 'local');
+        document.getElementById('url-input').value = '';
+        openModal('url-modal');
+    });
+
+    document.getElementById('pop-from-global').addEventListener('click', () => {
+        addPopover.classList.remove('open');
+        currentMode = 'global';
+        updateSearchPlaceholder();
+        loadGlobalLibrary();
+    });
+
+    // ─── File input → show visibility modal ──────────────────────────────
+    document.getElementById('file-input-hidden').addEventListener('change', e => {
+        pendingFile = e.target.files[0];
+        if (!pendingFile) return;
+        document.getElementById('upload-filename').textContent = pendingFile.name;
+        setActiveVis(document.querySelector('#upload-vis-modal .lib-vis-toggle'), 'local');
+        openModal('upload-vis-modal');
+        e.target.value = ''; // reset so same file can be re-picked
+    });
+
+    // Visibility toggle buttons (shared logic)
+    document.querySelectorAll('.lib-vis-toggle').forEach(group => {
+        group.querySelectorAll('.lib-vis-btn').forEach(btn => {
+            btn.addEventListener('click', () => setActiveVis(group, btn.dataset.val));
         });
+    });
 
-        // Upload modal
-        document.getElementById('upload-btn').addEventListener('click', () => openModal('upload-modal-overlay'));
-        document.getElementById('upload-modal-close').addEventListener('click', () => closeModal('upload-modal-overlay'));
-
-        // Upload modal tabs
-        document.getElementById('tab-file').addEventListener('click', () => this._switchUploadTab('file'));
-        document.getElementById('tab-url').addEventListener('click',  () => this._switchUploadTab('url'));
-
-        // Upload forms
-        document.getElementById('upload-file-form').addEventListener('submit', (e) => this._handleFileUpload(e));
-        document.getElementById('upload-url-form').addEventListener('submit',  (e) => this._handleUrlScrape(e));
-
-        // Add shelf modal
-        document.getElementById('add-shelf-btn').addEventListener('click', () => openModal('shelf-modal-overlay'));
-        document.getElementById('shelf-modal-close').addEventListener('click', () => closeModal('shelf-modal-overlay'));
-        document.getElementById('add-shelf-form').addEventListener('submit', (e) => this._handleAddShelf(e));
-
-        // User settings modal
-        document.getElementById('user-profile-btn').addEventListener('click', () => this._openUserModal());
-        document.getElementById('user-modal-close').addEventListener('click', () => closeModal('user-modal-overlay'));
-        document.getElementById('update-user-form').addEventListener('submit', (e) => this._handleUpdateUser(e));
-        document.getElementById('logout-btn').addEventListener('click', () => {
-            localStorage.removeItem('access_token');
-            window.location.href = 'index.html';
-        });
-
-        // Content edit modal
-        document.getElementById('content-modal-close').addEventListener('click', () => closeModal('content-modal-overlay'));
-        document.getElementById('update-content-form').addEventListener('submit', (e) => this._handleUpdateContent(e));
-        document.getElementById('delete-content-btn').addEventListener('click', () => this._handleDeleteContent());
-
-        // Add to shelf modal
-        document.getElementById('add-to-shelf-modal-close').addEventListener('click', () => closeModal('add-to-shelf-modal-overlay'));
-        document.getElementById('add-to-shelf-form').addEventListener('submit', (e) => this._handleAddToShelfSubmit(e));
-
-        // Set cover modal
-        document.getElementById('set-cover-modal-close').addEventListener('click', () => closeModal('set-cover-modal-overlay'));
-        document.getElementById('set-cover-form').addEventListener('submit', (e) => this._handleSetCoverSubmit(e));
-
-        // Smart Queue
-        document.getElementById('smart-queue-btn').addEventListener('click', () => openModal('smart-queue-modal-overlay'));
-        document.getElementById('smart-queue-modal-close').addEventListener('click', () => closeModal('smart-queue-modal-overlay'));
-        document.getElementById('smart-queue-form').addEventListener('submit', (e) => this._handleSmartQueue(e));
-
-        // AI Panel
-        document.getElementById('nav-ai').addEventListener('click', () => {
-            document.getElementById('ai-panel-overlay').classList.add('active');
-            const select = document.getElementById('ai-understand-book-select');
-            select.innerHTML = '';
-            (this.allBooks || []).forEach(book => {
-                const opt = document.createElement('option');
-                opt.value = book.id; // ContentSource ID
-                opt.textContent = book.title;
-                select.appendChild(opt);
-            });
-        });
-        document.getElementById('ai-panel-close').addEventListener('click', () => {
-            document.getElementById('ai-panel-overlay').classList.remove('active');
-        });
-        document.getElementById('ai-understand-btn').addEventListener('click', () => this._handleAiUnderstand());
-        document.getElementById('ai-learning-path-btn').addEventListener('click', () => this._handleAiLearningPath());
-
-        // Close dropdowns when clicking outside
-        document.addEventListener('click', (e) => {
-            if (this.activeDropdown && !this.activeDropdown.contains(e.target)) {
-                this.activeDropdown.classList.remove('open');
-                this.activeDropdown = null;
-            }
-        });
-
-        // Click overlay to close modals
-        document.querySelectorAll('.modal-overlay').forEach(overlay => {
-            overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) overlay.classList.remove('active');
-            });
+    function setActiveVis(group, val) {
+        group.querySelectorAll('.lib-vis-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.val === val);
         });
     }
 
-    /* ── Load view ──────────────────────────────────────── */
-    async loadView(view) {
-        this.currentView = view;
-        this.searchInput.value = '';
-        this.searchQuery = '';
+    function getActiveVis(group) {
+        return group.querySelector('.lib-vis-btn.active')?.dataset.val || 'local';
+    }
 
-        // Sidebar active state
-        document.getElementById('nav-local').classList.toggle('active',  view === 'local');
-        document.getElementById('nav-global').classList.toggle('active', view === 'global');
-        this.viewTitle.textContent = view === 'local' ? 'My Library' : 'Global Library';
+    // ─── Upload file ──────────────────────────────────────────────────────
+    document.getElementById('btn-do-upload').addEventListener('click', async () => {
+        if (!pendingFile) return;
+        const btn = document.getElementById('btn-do-upload');
+        const visGroup = document.querySelector('#upload-vis-modal .lib-vis-toggle');
+        const visibility = getActiveVis(visGroup);
 
-        this._showSpinner();
+        const fd = new FormData();
+        fd.append('file', pendingFile);
+        fd.append('visibility', visibility);
+
+        btn.textContent = 'Uploading…'; btn.disabled = true;
         try {
-            if (view === 'local') {
-                await this._fetchLocalBooks();
-            } else {
-                await this._fetchGlobalBooks();
-            }
-        } catch (err) {
-            showError('Failed to load library: ' + err.message);
-            this.bookGrid.innerHTML = '<div class="lib-empty"><p>Could not load books.</p></div>';
-        }
+            await api.post('/content/upload', fd);
+            closeModal('upload-vis-modal');
+            pendingFile = null;
+            toast('✓ Uploaded and added to your library');
+            currentMode = 'local';
+            await loadLocalLibrary();
+        } catch (_) { /* api shows error */ }
+        btn.textContent = 'Upload'; btn.disabled = false;
+    });
+
+    // ─── Add from URL ─────────────────────────────────────────────────────
+    document.getElementById('btn-do-url').addEventListener('click', async () => {
+        const url = document.getElementById('url-input').value.trim();
+        if (!url) { toast('Please enter a URL'); return; }
+        const btn = document.getElementById('btn-do-url');
+        const visGroup = document.querySelector('#url-modal .lib-vis-toggle');
+        const visibility = getActiveVis(visGroup);
+
+        btn.textContent = 'Scraping…'; btn.disabled = true;
+        try {
+            await api.post('/content/url', { url, visibility });
+            closeModal('url-modal');
+            toast('✓ Article added to your library');
+            currentMode = 'local';
+            await loadLocalLibrary();
+        } catch (_) { /* api shows error */ }
+        btn.textContent = 'Scrape & Add'; btn.disabled = false;
+    });
+
+    // ─── Profile panel ────────────────────────────────────────────────────
+    document.getElementById('btn-profile').addEventListener('click', async () => {
+        openModal('profile-panel');
+        loadProfilePanel();
+    });
+
+    async function loadProfilePanel() {
+        try {
+            const user = await api.get('/auth/users/me');
+            document.getElementById('profile-name-input').value = user.display_name || '';
+            document.getElementById('profile-email-display').textContent = user.email;
+            document.getElementById('stat-wpm').textContent = user.current_wpm || user.default_wpm || '—';
+
+            try {
+                const stats = await api.get('/profile/stats');
+                document.getElementById('stat-words').textContent =
+                    Number(stats.total_words_read || 0).toLocaleString();
+                const hrs = ((stats.total_time_read_sec || 0) / 3600).toFixed(1);
+                document.getElementById('stat-time').textContent = hrs + 'h';
+            } catch (_) {}
+        } catch (_) {}
     }
 
-    async _fetchLocalBooks() {
-        const res = await apiFetch('/library');
-        if (!res || !res.ok) throw new Error(await res?.text() || 'error');
-        const data = await res.json();
-        // /library returns array of LibraryItemResponse which has .content_source
-        this.allBooks = (Array.isArray(data) ? data : (data.items || [])).map(item => {
-            if (item.content_source) {
-                return { 
-                    ...item.content_source, 
-                    library_item_id: item.id,
-                    is_finished: item.is_finished,
-                    current_position: item.current_position
-                };
-            }
-            return item;
-        });
-        this._renderGrid(this._filtered());
+    document.getElementById('btn-save-name').addEventListener('click', async () => {
+        const name = document.getElementById('profile-name-input').value.trim();
+        if (!name) return;
+        const btn = document.getElementById('btn-save-name');
+        btn.textContent = '…'; btn.disabled = true;
+        try {
+            await api.patch('/auth/users/me', { display_name: name });
+            toast('✓ Name updated');
+        } catch (_) {}
+        btn.textContent = 'Save'; btn.disabled = false;
+    });
+
+    // ─── Shelf Management ─────────────────────────────────────────────────
+    async function loadShelves() {
+        try {
+            const res = await api.get('/shelves');
+            shelves = res.items || res || [];
+            renderShelves();
+        } catch (_) {}
     }
 
-    async _fetchGlobalBooks() {
-        const res = await apiFetch('/content/global?limit=80');
-        if (!res || !res.ok) throw new Error(await res?.text() || 'error');
-        const data = await res.json();
-        this.allBooks = data.items || [];
-        this._renderGrid(this._filtered());
-    }
-
-    /* ── Filtering ──────────────────────────────────────── */
-    _filtered() {
-        if (!this.searchQuery) return this.allBooks;
-        return this.allBooks.filter(b =>
-            (b.title  || '').toLowerCase().includes(this.searchQuery) ||
-            (b.author || '').toLowerCase().includes(this.searchQuery)
-        );
-    }
-
-    /* ── Render book grid ───────────────────────────────── */
-    _showSpinner() {
-        this.bookGrid.innerHTML = '<div class="spinner">Loading…</div>';
-    }
-
-    _renderGrid(books) {
-        this.bookGrid.innerHTML = '';
-
-        if (!books.length) {
-            this.bookGrid.innerHTML = `
-                <div class="lib-empty">
-                    <i data-lucide="book-open"></i>
-                    <p>${this.searchQuery ? 'No results for "' + this.searchQuery + '"' : 'No books yet.'}</p>
-                    <small>${this.currentView === 'local' ? 'Upload a file or scrape an article to get started.' : ''}</small>
-                </div>`;
-            lucide.createIcons();
+    function renderShelves() {
+        const container = document.getElementById('shelf-list-container');
+        container.innerHTML = '';
+        if (shelves.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-light);font-size:0.85rem;text-align:center;padding:12px;">No shelves yet.</p>';
             return;
         }
 
-        books.forEach(book => this.bookGrid.appendChild(this._makeCard(book)));
-        lucide.createIcons();
+        shelves.forEach(shelf => {
+            const item = document.createElement('div');
+            item.className = 'lib-shelf-item';
+            item.innerHTML = `
+                <div class="lib-shelf-name" title="${esc(shelf.name)}">${esc(shelf.name)}</div>
+                <div class="lib-shelf-actions">
+                    <button class="lib-shelf-icon-btn edit" title="Rename" data-id="${shelf.id}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button class="lib-shelf-icon-btn view" title="View Books" data-id="${shelf.id}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    </button>
+                    <button class="lib-shelf-icon-btn delete" title="Delete Shelf" data-id="${shelf.id}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                </div>
+            `;
+
+            // Rename
+            item.querySelector('.edit').addEventListener('click', async () => {
+                const newName = prompt('Enter new shelf name:', shelf.name);
+                if (!newName || newName === shelf.name) return;
+                try {
+                    await api.patch(`/shelves/${shelf.id}`, { name: newName });
+                    await loadShelves();
+                } catch (_) {}
+            });
+
+            // View Books
+            item.querySelector('.view').addEventListener('click', async () => {
+                closeModal('shelves-modal');
+                showLoading();
+                try {
+                    // Fetch items in this shelf
+                    const res = await api.get(`/shelves/${shelf.id}/items`);
+                    // The backend returns a list of ShelfItem or an object with items.
+                    const rawItems = res.items || res || [];
+                    const items = rawItems.map(si => si.library_item);
+                    allItems = items;
+                    currentMode = 'local';
+                    searchInput.value = '';
+                    renderLocalGrid();
+                    toast(`Showing shelf: ${shelf.name}`);
+                } catch (_) {
+                    showError('Failed to load shelf items.');
+                }
+            });
+
+            // Delete
+            item.querySelector('.delete').addEventListener('click', async () => {
+                if (!confirm(`Delete shelf "${shelf.name}"? Books will remain in your library.`)) return;
+                try {
+                    await api.delete(`/shelves/${shelf.id}`);
+                    await loadShelves();
+                } catch (_) {}
+            });
+
+            container.appendChild(item);
+        });
     }
 
-    _makeCard(book) {
-        const card = document.createElement('div');
-        card.className = 'book-card';
+    document.getElementById('btn-new-shelf').addEventListener('click', () => {
+        const form = document.getElementById('new-shelf-form');
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        if (form.style.display === 'block') document.getElementById('new-shelf-input').focus();
+    });
 
-        // Cover
-        let coverHTML;
-        if (book.cover_image_url) {
-            coverHTML = `<img class="book-cover-img" src="${book.cover_image_url}" alt="${book.title}" loading="lazy">`;
+    document.getElementById('btn-save-new-shelf').addEventListener('click', async () => {
+        const input = document.getElementById('new-shelf-input');
+        const name = input.value.trim();
+        if (!name) return;
+        try {
+            await api.post('/shelves', { name, sort_order: 0 });
+            input.value = '';
+            document.getElementById('new-shelf-form').style.display = 'none';
+            await loadShelves();
+        } catch (_) {}
+    });
+
+    document.getElementById('new-shelf-input').addEventListener('keypress', e => {
+        if (e.key === 'Enter') document.getElementById('btn-save-new-shelf').click();
+    });
+
+    // ─── Search ───────────────────────────────────────────────────────────
+    const searchInput = document.getElementById('lib-search');
+    searchInput.addEventListener('input', e => {
+        const term = e.target.value.toLowerCase().trim();
+        if (currentMode === 'global') {
+            clearTimeout(window._searchTimer);
+            window._searchTimer = setTimeout(() => loadGlobalLibrary(term), 380);
         } else {
-            // Coloured placeholder matching index.html book spine palette
-            const colours = ['#AFA9EC','#5DCAA5','#F0997B','#85B7EB','#F3C370','#EA99B6','#97C459','#B9B4A9'];
-            const bg = colours[Math.abs(this._hash(book.title || '')) % colours.length];
-            coverHTML = `
-                <div class="book-cover-placeholder" style="background:${bg}">
-                    <span class="book-cover-placeholder-text">${book.title || 'Untitled'}</span>
+            renderLocalGrid(term);
+        }
+    });
+
+    // ─── Data loaders ─────────────────────────────────────────────────────
+    async function loadLocalLibrary() {
+        showLoading();
+        try {
+            const res = await api.get('/library?limit=80');
+            allItems = res.items || [];
+            currentMode = 'local';
+            renderLocalGrid(searchInput.value.toLowerCase().trim());
+        } catch (_) {
+            showError('Failed to load library. Is the backend running?');
+        }
+    }
+
+    async function loadGlobalLibrary(term = '') {
+        showLoading();
+        try {
+            let url = '/content/global?limit=80';
+            if (term) url += `&title=${encodeURIComponent(term)}`;
+            const res = await api.get(url);
+            renderGlobalGrid(res.items || []);
+        } catch (_) {
+            showError('Failed to load global library.');
+        }
+    }
+
+    // ─── Renderers ────────────────────────────────────────────────────────
+    function renderLocalGrid(term = '') {
+        let items = [...allItems];
+        if (term) {
+            items = items.filter(i => {
+                const t = (i.content_source?.title || '').toLowerCase();
+                const a = (i.content_source?.author || '').toLowerCase();
+                return t.includes(term) || a.includes(term);
+            });
+        }
+        updateSearchPlaceholder(allItems.length);
+        const grid = document.getElementById('lib-grid');
+        grid.innerHTML = '';
+
+        if (items.length === 0) {
+            grid.innerHTML = `
+                <div class="lib-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    </svg>
+                    <p>${term ? 'No books match your search.' : 'Your library is empty.'}</p>
+                    <small>${term ? '' : 'Click + to add your first book.'}</small>
                 </div>`;
+            return;
         }
 
-        const typeLabel = (book.type || 'file').toUpperCase();
-        const progress  = book.progress_pct ?? (book.is_finished ? 100 : 0);
+        items.forEach(item => grid.appendChild(buildLocalCard(item)));
+    }
+
+    function renderGlobalGrid(sources) {
+        updateSearchPlaceholder(sources.length);
+        const grid = document.getElementById('lib-grid');
+        grid.innerHTML = '';
+
+        if (sources.length === 0) {
+            grid.innerHTML = `<div class="lib-empty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <p>No public content found.</p></div>`;
+            return;
+        }
+
+        sources.forEach(cs => grid.appendChild(buildGlobalCard(cs)));
+    }
+
+    // ─── Card builders ────────────────────────────────────────────────────
+    function buildLocalCard(item) {
+        const cs = item.content_source;
+        if (!cs) return document.createElement('div');
+
+        const card = document.createElement('div');
+        card.className = 'lib-card';
+
+        // Open reader on card click (not on info btn click)
+        card.addEventListener('click', e => {
+            if (e.target.closest('.lib-card-info-btn')) return;
+            window.location.href = `reader.html?id=${cs.id}`;
+        });
+
+        // Progress
+        let progressPct = 0;
+        if (item.is_finished) progressPct = 100;
+
+        const statusHtml = item.is_finished
+            ? `<span class="lib-badge-finished">Finished</span>`
+            : `<span>${progressPct}%</span>`;
 
         card.innerHTML = `
-            <div class="book-cover-wrap" id="cover-${book.id}">
-                ${coverHTML}
-                <span class="book-type-badge">${typeLabel}</span>
-                <button class="book-menu-btn" data-id="${book.id}" title="Options">
-                    <i data-lucide="more-vertical"></i>
+            <div class="lib-card-cover">
+                ${cs.cover_image_url
+                    ? `<img src="${esc(cs.cover_image_url)}" alt="${esc(cs.title)}" loading="lazy">`
+                    : `<div class="lib-card-cover-placeholder">
+                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                           </svg>
+                       </div>`
+                }
+                <span class="lib-card-cover-type">${cs.type || 'doc'}</span>
+                <button class="lib-card-info-btn" title="Details" tabindex="-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
                 </button>
-                <div class="book-dropdown" id="dropdown-${book.id}">
-                    <div class="book-dropdown-item" data-action="read" data-id="${book.id}">
-                        <i data-lucide="book-open"></i> Open
+                <button class="lib-card-extra-btn btn-add-shelf" title="Add to Shelf" tabindex="-1" data-lib-item-id="${item.id}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <div class="lib-shelf-dropdown">
+                    <div class="lib-shelf-dropdown-header">
+                        <span>Add to Shelf</span>
+                        <button title="Create Shelf" class="btn-create-shelf-inline">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                        </button>
                     </div>
-                    ${this.currentView === 'local' ? `
-                    <div class="book-dropdown-item" data-action="add-shelf" data-id="${book.library_item_id}">
-                        <i data-lucide="layers"></i> Add to shelf
-                    </div>
-                    <div class="book-dropdown-item" data-action="set-cover" data-id="${book.id}">
-                        <i data-lucide="image"></i> Set cover image
-                    </div>
-                    <div class="book-dropdown-item" data-action="edit" data-id="${book.id}">
-                        <i data-lucide="pencil"></i> Edit details
-                    </div>
-                    <div class="book-dropdown-item danger" data-action="delete" data-id="${book.library_item_id || book.id}">
-                        <i data-lucide="trash-2"></i> Delete
-                    </div>` : ``}
+                    <div class="lib-shelf-dropdown-list"></div>
                 </div>
             </div>
-            <div class="book-info">
-                <div class="book-title-text">${book.title || 'Untitled'}</div>
-                <div class="book-meta-row">
-                    <span>${book.author || ''}</span>
-                    <span>${progress}%</span>
-                </div>
-                <div class="book-progress-bar">
-                    <div class="book-progress-fill" style="width:${progress}%"></div>
-                </div>
-            </div>`;
+            <div class="lib-card-body">
+                <div class="lib-card-title" title="${esc(cs.title)}">${esc(cs.title)}</div>
+                <div class="lib-card-status">${statusHtml}</div>
+            </div>
+        `;
 
-        // Three-dot button: open dropdown (stop propagation so card click doesn't fire)
-        card.querySelector('.book-menu-btn').addEventListener('click', (e) => {
+        card.querySelector('.lib-card-info-btn').addEventListener('click', e => {
             e.stopPropagation();
-            const dd = document.getElementById(`dropdown-${book.id}`);
-            if (this.activeDropdown && this.activeDropdown !== dd) {
-                this.activeDropdown.classList.remove('open');
-            }
-            dd.classList.toggle('open');
-            this.activeDropdown = dd.classList.contains('open') ? dd : null;
+            openDetailsModal(cs, item);
         });
 
-        // Dropdown items
-        card.querySelectorAll('.book-dropdown-item').forEach(item => {
-            item.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const action = item.dataset.action;
-                const id = item.dataset.id;
-                if (this.activeDropdown) { this.activeDropdown.classList.remove('open'); this.activeDropdown = null; }
-                if (action === 'read')   window.location.href = `reader.html?id=${id}&library_item_id=${book.library_item_id || ''}`;
-                if (action === 'edit')   this._openEditModal(book);
-                if (action === 'delete') this._quickDelete(id);
-                if (action === 'add-shelf') this._openAddToShelfModal(id);
-                if (action === 'set-cover') this._openSetCoverModal(id);
-                if (action === 'add-library') this._addToLibrary(id);
+        const extraBtn = card.querySelector('.btn-add-shelf');
+        const dropdown = card.querySelector('.lib-shelf-dropdown');
+        const list = dropdown.querySelector('.lib-shelf-dropdown-list');
+
+        extraBtn.addEventListener('click', async e => {
+            e.stopPropagation();
+            // Close other open dropdowns
+            document.querySelectorAll('.lib-shelf-dropdown').forEach(d => {
+                if (d !== dropdown) d.classList.remove('open');
             });
+            
+            const isOpen = dropdown.classList.contains('open');
+            if (isOpen) {
+                dropdown.classList.remove('open');
+            } else {
+                dropdown.classList.add('open');
+                // Ensure shelves are loaded
+                if (shelves.length === 0) {
+                    try {
+                        const res = await api.get('/shelves');
+                        shelves = res.items || res || [];
+                    } catch (_) {}
+                }
+                // Populate list
+                list.innerHTML = '';
+                if (shelves.length === 0) {
+                    list.innerHTML = '<div style="padding:8px 12px;font-size:0.8rem;color:var(--text-light);">No shelves</div>';
+                } else {
+                    shelves.forEach(shelf => {
+                        const sItem = document.createElement('div');
+                        sItem.className = 'lib-shelf-dropdown-item';
+                        sItem.textContent = shelf.name;
+                        sItem.addEventListener('click', async (ev) => {
+                            ev.stopPropagation();
+                            try {
+                                await api.post(`/shelves/${shelf.id}/items`, { library_item_id: item.id });
+                                toast(`Added to "${shelf.name}"`);
+                            } catch (error) {
+                                if (error.message.includes("already exists")) {
+                                    toast(`Already in "${shelf.name}"`);
+                                }
+                            }
+                            dropdown.classList.remove('open');
+                        });
+                        list.appendChild(sItem);
+                    });
+                }
+            }
         });
 
-        // Cover click → open reader (only if menu not open)
-        card.querySelector('.book-cover-wrap').addEventListener('click', (e) => {
-            if (e.target.closest('.book-menu-btn') || e.target.closest('.book-dropdown')) return;
-            window.location.href = `reader.html?id=${book.id}&library_item_id=${book.library_item_id || ''}`;
+        // Inline create shelf
+        dropdown.querySelector('.btn-create-shelf-inline').addEventListener('click', async e => {
+            e.stopPropagation();
+            const name = prompt('Enter new shelf name:');
+            if (!name) return;
+            try {
+                await api.post('/shelves', { name, sort_order: 0 });
+                dropdown.classList.remove('open');
+                await loadShelves();
+                // Reopen to show new shelf
+                extraBtn.click();
+            } catch (_) {}
         });
 
         return card;
     }
 
-    /* Deterministic colour hash */
-    _hash(str) {
-        let h = 0;
-        for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-        return h;
-    }
+    function buildGlobalCard(cs) {
+        const card = document.createElement('div');
+        card.className = 'lib-card';
 
-    /* ── User profile ───────────────────────────────────── */
-    async fetchUserProfile() {
-        try {
-            const res = await apiFetch('/auth/users/me');
-            if (!res || !res.ok) return;
-            const user = await res.json();
-            this._user = user;
-            this.sidebarName.textContent = user.display_name || user.email || 'User';
-            
-            // Display WPM
-            const wpmBadge = document.getElementById('sidebar-wpm-badge');
-            if (wpmBadge) {
-                wpmBadge.textContent = `${user.default_wpm || 250} WPM`;
-            }
-            
-            // Also store WPM for reader
-            localStorage.setItem('default_wpm', user.default_wpm || 250);
-        } catch (e) { /* silent */ }
-    }
+        // Double-click to add
+        card.title = 'Double-click to add to your library';
+        card.addEventListener('dblclick', () => addToLibrary(cs.id, cs.title));
 
-    _openUserModal() {
-        if (this._user) {
-            document.getElementById('user-display-name').value = this._user.display_name || '';
-            document.getElementById('user-default-wpm').value  = this._user.default_wpm  || '';
-        }
-        openModal('user-modal-overlay');
-    }
-
-    async _handleUpdateUser(e) {
-        e.preventDefault();
-        const body = {
-            display_name: document.getElementById('user-display-name').value || undefined,
-            default_wpm:  parseInt(document.getElementById('user-default-wpm').value) || undefined,
-        };
-        try {
-            const res = await apiFetch('/auth/users/me', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Update failed');
-            closeModal('user-modal-overlay');
-            await this.fetchUserProfile();
-        } catch (err) { showError(err.message); }
-    }
-
-    /* ── Shelves ────────────────────────────────────────── */
-    async fetchShelves() {
-        try {
-            const res = await apiFetch('/shelves');
-            if (!res || !res.ok) return;
-            const data = await res.json();
-            const shelves = data.items || data;
-            this.shelvesList.innerHTML = '';
-            
-            // Store shelves for the select dropdown later
-            this._shelves = shelves;
-            
-            shelves.forEach(shelf => {
-                const li = document.createElement('li');
-                li.className = 'lib-nav-item';
-                li.innerHTML = `<i data-lucide="bookmark"></i><span>${shelf.name}</span>`;
-                li.addEventListener('click', () => {
-                    this.loadShelf(shelf.id, shelf.name);
-                });
-                this.shelvesList.appendChild(li);
-            });
-            lucide.createIcons();
-        } catch (e) { /* silent */ }
-    }
-
-    async loadShelf(shelfId, shelfName) {
-        this.currentView = 'shelf';
-        this.searchInput.value = '';
-        this.searchQuery = '';
-
-        // Sidebar active state
-        document.querySelectorAll('.lib-nav-item').forEach(el => el.classList.remove('active'));
-        // Find the clicked shelf and make it active (optional, omitted for brevity, local/global are inactive)
-        
-        this.viewTitle.textContent = `Shelf: ${shelfName}`;
-        this._showSpinner();
-        
-        try {
-            // Need to fetch items for this shelf. The API has POST /shelves/{id}/items, wait, is there GET?
-            // Actually, /shelves/{id}/items isn't documented as GET in the plan. Let's fetch all library items
-            // Wait, let's just use the /library and filter? No, we need to know what's in the shelf.
-            // Let's check backend/router/shelves.py or just use /shelves?
-            const res = await apiFetch(`/shelves`);
-            // Actually, if GET /shelves/{id}/items is missing, I can fetch all library items, but I need shelf items.
-            // Let me see if there's a GET /shelves endpoint returning items.
-            // I'll just check backend/router/shelves.py later, let's assume `GET /shelves/{id}` returns it with items.
-            const sRes = await apiFetch(`/shelves/${shelfId}/items`);
-            if (!sRes.ok) throw new Error('Could not load shelf items');
-            const shelfData = await sRes.json();
-            // Assuming shelfData.items contains library items
-            this.allBooks = (shelfData.items || []).map(item => {
-                const li = item.library_item || item;
-                if (li.content_source) {
-                    return {
-                        ...li.content_source,
-                        library_item_id: li.id,
-                        is_finished: li.is_finished,
-                        current_position: li.current_position,
-                        shelf_item_id: item.id // if we want to delete from shelf
-                    };
+        card.innerHTML = `
+            <div class="lib-card-cover">
+                ${cs.cover_image_url
+                    ? `<img src="${esc(cs.cover_image_url)}" alt="${esc(cs.title)}" loading="lazy">`
+                    : `<div class="lib-card-cover-placeholder">
+                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                           </svg>
+                       </div>`
                 }
-                return li;
-            });
-            this._renderGrid(this._filtered());
-        } catch (err) {
-            showError('Failed to load shelf: ' + err.message);
-            this.bookGrid.innerHTML = '<div class="lib-empty"><p>Could not load shelf.</p></div>';
-        }
-    }
+                <span class="lib-card-cover-type">${cs.type || 'doc'}</span>
+                <button class="lib-card-info-btn" title="Details" tabindex="-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                </button>
+                <button class="lib-card-extra-btn btn-add-library" title="Add to Library" tabindex="-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+            </div>
+            <div class="lib-card-body">
+                <div class="lib-card-title" title="${esc(cs.title)}">${esc(cs.title)}</div>
+                <div class="lib-card-status" style="color:var(--accent);font-size:0.75rem;">Double-click to add</div>
+            </div>
+        `;
 
-    /* ── Dropdown actions ───────────────────────────────── */
-    _openAddToShelfModal(libraryItemId) {
-        document.getElementById('add-to-shelf-item-id').value = libraryItemId;
-        const select = document.getElementById('add-to-shelf-select');
-        select.innerHTML = '';
-        (this._shelves || []).forEach(shelf => {
-            const opt = document.createElement('option');
-            opt.value = shelf.id;
-            opt.textContent = shelf.name;
-            select.appendChild(opt);
+        card.querySelector('.lib-card-info-btn').addEventListener('click', e => {
+            e.stopPropagation();
+            openDetailsModal(cs, null);
         });
-        openModal('add-to-shelf-modal-overlay');
+
+        card.querySelector('.btn-add-library').addEventListener('click', e => {
+            e.stopPropagation();
+            addToLibrary(cs.id, cs.title);
+        });
+
+        return card;
     }
 
-    async _handleAddToShelfSubmit(e) {
-        e.preventDefault();
-        const libraryItemId = document.getElementById('add-to-shelf-item-id').value;
-        const shelfId = document.getElementById('add-to-shelf-select').value;
-        if (!libraryItemId || !shelfId) return;
+    // ─── Book Details Modal ───────────────────────────────────────────────
+    function openDetailsModal(cs, libItem) {
+        currentDetailContent = cs;
+        currentDetailLibItem = libItem;
 
-        try {
-            const res = await apiFetch(`/shelves/${shelfId}/items`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ library_item_id: parseInt(libraryItemId) })
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Failed to add to shelf');
-            closeModal('add-to-shelf-modal-overlay');
-        } catch (err) { showError(err.message); }
+        // Cover
+        const coverImg = document.getElementById('detail-cover-img');
+        const coverPlaceholder = document.getElementById('detail-cover-placeholder');
+        if (cs.cover_image_url) {
+            coverImg.src = cs.cover_image_url;
+            coverImg.style.display = '';
+            coverPlaceholder.style.display = 'none';
+        } else {
+            coverImg.style.display = 'none';
+            coverPlaceholder.style.display = '';
+        }
+
+        // Title / author
+        document.getElementById('detail-title').textContent = cs.title || '';
+        document.getElementById('detail-author').textContent = cs.author || '';
+        showTitleView();
+
+        // Delete button visibility
+        const deleteBtn = document.getElementById('btn-detail-delete');
+        const editBtn = document.getElementById('btn-detail-edit');
+        const isOwner = cs.owner_id === currentUserId;
+        const inLocalLib = libItem !== null;
+        
+        if (isOwner || inLocalLib) {
+            deleteBtn.style.display = '';
+            deleteBtn.title = isOwner ? 'Delete content for everyone' : 'Remove from my library';
+        } else {
+            deleteBtn.style.display = 'none';
+        }
+
+        // Hide edit button for global items (not owned and not in local lib, or simply if currentMode == 'global')
+        if (currentMode === 'global') {
+            editBtn.style.display = 'none';
+        } else {
+            editBtn.style.display = '';
+        }
+
+        // Metadata grid
+        populateMetaGrid(cs);
+
+        // Series grid
+        populateSeriesGrid(cs);
+
+        // Description
+        const descEl = document.getElementById('detail-desc');
+        const descSection = document.getElementById('section-desc');
+        if (cs.description) {
+            descEl.textContent = cs.description;
+            descSection.style.display = '';
+        } else {
+            descSection.style.display = 'none';
+        }
+
+        openModal('book-details-modal');
     }
 
-    async _handleSmartQueue(e) {
-        e.preventDefault();
-        const timeBudget = parseInt(document.getElementById('sq-time-budget').value, 10);
-        if (!timeBudget || timeBudget < 5) return;
+    function populateMetaGrid(cs) {
+        const grid = document.getElementById('meta-grid');
+        grid.innerHTML = '';
 
-        const btn = document.getElementById('sq-submit-btn');
-        const resultsContainer = document.getElementById('sq-results-container');
-        btn.textContent = 'Generating...';
-        btn.disabled = true;
-        resultsContainer.style.display = 'none';
-        resultsContainer.innerHTML = '<div class="spinner">Crunching your library...</div>';
+        // Fields to skip in the main loop (handled elsewhere or internal)
+        const skipFields = ['id', 'owner_id', 'file_path', 'cover_image_url', 'raw_text', 'word_count', 'series', 'description', 'title', 'author'];
+        
+        let hasFields = false;
 
-        try {
-            const res = await apiFetch('/suggestions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ time_budget_minutes: timeBudget })
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Failed to start smart queue');
-            const data = await res.json();
-            const reqId = data.id || data.request_id;
-            
-            // Poll for completion
-            this._pollSuggestions(reqId);
-        } catch (err) {
-            showError(err.message);
-            btn.textContent = 'Get Suggestions';
-            btn.disabled = false;
+        for (const [key, value] of Object.entries(cs)) {
+            if (value === null || value === undefined || value === '') continue;
+            if (skipFields.includes(key)) continue;
+
+            hasFields = true;
+            const cell = document.createElement('div');
+            cell.className = 'lib-meta-cell';
+
+            // Format label (e.g. file_size_bytes -> File Size Bytes, or custom)
+            let label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            let displayValue = value;
+
+            if (key === 'file_size_bytes') {
+                label = 'File Size';
+                displayValue = fmtBytes(value);
+            } else if (key === 'created_at' || key === 'updated_at') {
+                displayValue = fmtDate(value);
+            } else if (key === 'format' && typeof value === 'string') {
+                displayValue = value.toUpperCase();
+            }
+
+            let valueHtml;
+            if (key === 'tags' && Array.isArray(value)) {
+                valueHtml = value.map(t => `<span class="lib-tag-chip">${esc(t)}</span>`).join('');
+            } else {
+                valueHtml = `<span class="lib-meta-value">${esc(String(displayValue))}</span>`;
+            }
+
+            cell.innerHTML = `<div class="lib-meta-label">${esc(label)}</div>${valueHtml}`;
+            grid.appendChild(cell);
+        }
+
+        if (!hasFields) {
+            grid.innerHTML = '<p style="color:var(--text-light);font-size:0.82rem;grid-column:1/-1;">No metadata available.</p>';
         }
     }
 
-    async _pollSuggestions(reqId) {
-        const resultsContainer = document.getElementById('sq-results-container');
-        resultsContainer.style.display = 'block';
+    function populateSeriesGrid(cs) {
+        const grid = document.getElementById('series-grid');
+        const section = document.getElementById('section-series');
+        grid.innerHTML = '';
 
-        const poll = async () => {
+        if (!cs.series) {
+            section.style.display = 'none';
+            return;
+        }
+
+        section.style.display = '';
+        const cell = document.createElement('div');
+        cell.className = 'lib-meta-cell';
+        cell.innerHTML = `<div class="lib-meta-label">Series</div><span class="lib-meta-value">${esc(cs.series)}</span>`;
+        grid.appendChild(cell);
+    }
+
+    // Collapsible sections
+    document.querySelectorAll('.lib-section-header').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.dataset.target;
+            const body = document.getElementById(targetId);
+            const chevron = btn.querySelector('.lib-chevron');
+            if (!body) return;
+            const isHidden = body.style.display === 'none';
+            body.style.display = isHidden ? '' : 'none';
+            chevron?.classList.toggle('collapsed', !isHidden);
+        });
+    });
+
+    // Edit title / cover
+    document.getElementById('btn-detail-edit').addEventListener('click', () => {
+        if (!currentDetailContent) return;
+        document.getElementById('edit-title-input').value = currentDetailContent.title || '';
+        showTitleEdit();
+    });
+
+    document.getElementById('btn-cancel-title').addEventListener('click', () => {
+        // Reset file input if canceled
+        document.getElementById('cover-upload-hidden').value = '';
+        document.getElementById('btn-upload-cover').textContent = 'Upload Cover Image';
+        showTitleView();
+    });
+
+    // Cover upload button triggers file picker
+    document.getElementById('btn-upload-cover').addEventListener('click', () => {
+        document.getElementById('cover-upload-hidden').click();
+    });
+
+    document.getElementById('cover-upload-hidden').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (file) {
+            document.getElementById('btn-upload-cover').textContent = file.name;
+        }
+    });
+
+    document.getElementById('btn-save-title').addEventListener('click', async () => {
+        if (!currentDetailContent) return;
+        const btn = document.getElementById('btn-save-title');
+        const newTitle = document.getElementById('edit-title-input').value.trim();
+        const coverFile = document.getElementById('cover-upload-hidden').files[0];
+        if (!newTitle) return;
+
+        btn.textContent = 'Saving…'; btn.disabled = true;
+        try {
+            // Update title first if it changed
+            if (newTitle !== currentDetailContent.title) {
+                const updated = await api.patch(`/content/${currentDetailContent.id}`, { title: newTitle });
+                currentDetailContent.title = updated.title;
+                document.getElementById('detail-title').textContent = updated.title;
+            }
+
+            // Upload cover if provided
+            if (coverFile) {
+                const fd = new FormData();
+                fd.append('file', coverFile);
+                const updatedContent = await api.post(`/content/${currentDetailContent.id}/cover`, fd);
+                currentDetailContent.cover_image_url = updatedContent.cover_image_url;
+            }
+
+            // Update UI cover
+            const coverImg = document.getElementById('detail-cover-img');
+            const coverPh = document.getElementById('detail-cover-placeholder');
+            if (currentDetailContent.cover_image_url) {
+                coverImg.src = currentDetailContent.cover_image_url;
+                coverImg.style.display = ''; coverPh.style.display = 'none';
+            } else {
+                coverImg.style.display = 'none'; coverPh.style.display = '';
+            }
+
+            // Reset file input
+            document.getElementById('cover-upload-hidden').value = '';
+            document.getElementById('btn-upload-cover').textContent = 'Upload Cover Image';
+
+            showTitleView();
+            await loadLocalLibrary();
+        } catch (_) {}
+        btn.textContent = 'Save'; btn.disabled = false;
+    });
+
+    function showTitleView() {
+        document.getElementById('detail-title-view').style.display = '';
+        document.getElementById('detail-title-edit').style.display = 'none';
+    }
+    function showTitleEdit() {
+        document.getElementById('detail-title-view').style.display = 'none';
+        document.getElementById('detail-title-edit').style.display = '';
+    }
+
+    // Delete button
+    document.getElementById('btn-detail-delete').addEventListener('click', async () => {
+        if (!currentDetailContent) return;
+        const cs = currentDetailContent;
+        const isOwner = cs.owner_id === currentUserId;
+        const libItem = currentDetailLibItem;
+
+        if (isOwner) {
+            if (!confirm(`Delete "${cs.title}" for everyone? This cannot be undone.`)) return;
             try {
-                const res = await apiFetch(`/suggestions/${reqId}`);
-                if (!res.ok) throw new Error('Failed to check status');
-                const data = await res.json();
-                
-                if (data.status === 'completed') {
-                    const btn = document.getElementById('sq-submit-btn');
-                    btn.textContent = 'Get Suggestions';
-                    btn.disabled = false;
-                    
-                    const suggestions = data.result || [];
-                    if (suggestions.length === 0) {
-                        resultsContainer.innerHTML = '<p>No suggestions found for this time budget.</p>';
-                        return;
-                    }
-
-                    resultsContainer.innerHTML = suggestions.map(s => `
-                        <div class="book-card" style="margin-bottom:1rem; width:100%; display:flex; gap:1rem; align-items:center; cursor:pointer;" onclick="window.location.href='reader.html?id=${s.id || s.content_id}'">
-                            <div style="flex:1">
-                                <strong>${s.title || 'Untitled'}</strong><br>
-                                <small>${s.author || 'Unknown'}</small>
-                            </div>
-                            <div style="background:var(--bg-secondary); padding:0.5rem; border-radius:4px; font-size:0.8rem;">
-                                ~${s.estimated_minutes || '?'} mins
-                            </div>
-                        </div>
-                    `).join('');
-                } else if (data.status === 'failed') {
-                    throw new Error('Suggestion task failed');
-                } else {
-                    // still pending
-                    setTimeout(poll, 3000);
-                }
-            } catch (err) {
-                showError(err.message);
-                const btn = document.getElementById('sq-submit-btn');
-                btn.textContent = 'Get Suggestions';
-                btn.disabled = false;
-                resultsContainer.innerHTML = '<p>An error occurred.</p>';
-            }
-        };
-        setTimeout(poll, 2000);
-    }
-
-    _openSetCoverModal(contentId) {
-        document.getElementById('set-cover-content-id').value = contentId;
-        openModal('set-cover-modal-overlay');
-    }
-
-    async _handleSetCoverSubmit(e) {
-        e.preventDefault();
-        const contentId = document.getElementById('set-cover-content-id').value;
-        const fileInput = document.getElementById('set-cover-file');
-        if (!fileInput.files.length) return;
-
-        const formData = new FormData();
-        formData.append('file', fileInput.files[0]);
-
-        try {
-            const token = localStorage.getItem('access_token');
-            const res = await fetch(`${API_BASE}/content/${contentId}/cover`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Failed to upload cover');
-            closeModal('set-cover-modal-overlay');
-            showError('Cover image updated!', 3000); // success toast
-            this.loadView(this.currentView);
-        } catch (err) { showError(err.message); }
-    }
-
-    async _addToLibrary(contentId) {
-        try {
-            const res = await apiFetch('/library', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content_id: parseInt(contentId) })
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Failed to add to library');
-            showError('Added to My Library!', 3000); // reuse toast for success
-        } catch (err) { showError(err.message); }
-    }
-
-    async _handleAddShelf(e) {
-        e.preventDefault();
-        const name = document.getElementById('shelf-name-input').value.trim();
-        if (!name) return;
-        try {
-            const res = await apiFetch('/shelves', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name }),
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Could not create shelf');
-            document.getElementById('shelf-name-input').value = '';
-            closeModal('shelf-modal-overlay');
-            await this.fetchShelves();
-        } catch (err) { showError(err.message); }
-    }
-
-    /* ── Upload modal tabs ──────────────────────────────── */
-    _switchUploadTab(tab) {
-        document.getElementById('tab-file').classList.toggle('active', tab === 'file');
-        document.getElementById('tab-url').classList.toggle('active',  tab === 'url');
-        document.getElementById('tab-content-file').style.display = tab === 'file' ? 'block' : 'none';
-        document.getElementById('tab-content-url').style.display  = tab === 'url'  ? 'block' : 'none';
-    }
-
-    /* ── File upload ────────────────────────────────────── */
-    async _handleFileUpload(e) {
-        e.preventDefault();
-        const fileInput = document.getElementById('upload-file-input');
-        const file = fileInput.files[0];
-        if (!file) { showError('Please select a file.'); return; }
-
-        const btn = document.getElementById('upload-file-btn');
-        btn.textContent = 'Uploading…';
-        btn.disabled = true;
-
-        const formData = new FormData();
-        formData.append('file', file);
-        const title = document.getElementById('upload-title').value.trim();
-        const author = document.getElementById('upload-author').value.trim();
-        const visibility = document.getElementById('upload-visibility').value;
-        if (title)  formData.append('title', title);
-        if (author) formData.append('author', author);
-        formData.append('visibility', visibility);
-
-        try {
-            const token = localStorage.getItem('access_token');
-            const res = await fetch(`${API_BASE}/content/upload`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData,
-            });
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.detail || 'Upload failed');
-            }
-            closeModal('upload-modal-overlay');
-            e.target.reset();
-            await this.loadView(this.currentView);
-        } catch (err) {
-            showError(err.message);
-        } finally {
-            btn.textContent = 'Upload File';
-            btn.disabled = false;
+                await api.delete(`/content/${cs.id}`);
+                closeModal('book-details-modal');
+                toast('✓ Content deleted');
+                await loadLocalLibrary();
+            } catch (_) {}
+        } else if (libItem) {
+            if (!confirm(`Remove "${cs.title}" from your library?`)) return;
+            try {
+                await api.delete(`/library/${libItem.id}`);
+                closeModal('book-details-modal');
+                toast('✓ Removed from library');
+                await loadLocalLibrary();
+            } catch (_) {}
         }
-    }
+    });
 
-    /* ── URL scrape ─────────────────────────────────────── */
-    async _handleUrlScrape(e) {
-        e.preventDefault();
-        const url = document.getElementById('scrape-url').value.trim();
-        const visibility = document.getElementById('scrape-visibility').value;
-        if (!url) { showError('Please enter a URL.'); return; }
-
-        const btn = document.getElementById('scrape-url-btn');
-        btn.textContent = 'Scraping…';
-        btn.disabled = true;
-
+    // ─── Add global item to library ──────────────────────────────────────
+    async function addToLibrary(contentId, title) {
         try {
-            const res = await apiFetch('/content/url', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url, visibility }),
-            });
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.detail || 'Scrape failed');
-            }
-            closeModal('upload-modal-overlay');
-            e.target.reset();
-            await this.loadView(this.currentView);
-        } catch (err) {
-            showError(err.message);
-        } finally {
-            btn.textContent = 'Scrape & Add';
-            btn.disabled = false;
-        }
+            await api.post('/library', { content_id: contentId });
+            toast(`✓ "${title}" added to your library`);
+            currentMode = 'local';
+            await loadLocalLibrary();
+        } catch (_) {}
     }
 
-    /* ── Content edit modal ─────────────────────────────── */
-    _openEditModal(book) {
-        document.getElementById('edit-content-id').value            = book.id;
-        document.getElementById('edit-content-title').value         = book.title  || '';
-        document.getElementById('edit-content-author').value        = book.author || '';
-        document.getElementById('edit-content-visibility').value    = book.visibility || 'local';
-        openModal('content-modal-overlay');
+    // ─── UI helpers ───────────────────────────────────────────────────────
+    function showLoading() {
+        document.getElementById('lib-grid').innerHTML = `
+            <div class="lib-empty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="animation:spin 1s linear infinite;">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+            </div>`;
     }
 
-    async _handleUpdateContent(e) {
-        e.preventDefault();
-        const id = document.getElementById('edit-content-id').value;
-        const body = {
-            title:      document.getElementById('edit-content-title').value.trim()      || undefined,
-            author:     document.getElementById('edit-content-author').value.trim()     || undefined,
-            visibility: document.getElementById('edit-content-visibility').value,
-        };
+    function showError(msg) {
+        document.getElementById('lib-grid').innerHTML =
+            `<div class="lib-empty"><p>${msg}</p></div>`;
+    }
+
+    function updateSearchPlaceholder(n) {
+        const count = n !== undefined ? n : (currentMode === 'local' ? allItems.length : 0);
+        searchInput.placeholder = `Search in ${count} book${count !== 1 ? 's' : ''}…`;
+    }
+
+    function toast(msg) {
+        const el = document.getElementById('error-toast');
+        if (!el) return;
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => el.classList.add('show'), 10);
+        setTimeout(() => {
+            el.classList.remove('show');
+            setTimeout(() => { el.style.display = 'none'; }, 300);
+        }, 3500);
+    }
+
+    function getUserIdFromToken() {
+        const token = localStorage.getItem('access_token');
+        if (!token) return null;
         try {
-            const res = await apiFetch(`/content/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Update failed');
-            closeModal('content-modal-overlay');
-            await this.loadView(this.currentView);
-        } catch (err) { showError(err.message); }
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.sub ? parseInt(payload.sub, 10) : null;
+        } catch (_) { return null; }
     }
 
-    async _handleDeleteContent() {
-        const id = document.getElementById('edit-content-id').value;
-        if (!confirm('Delete this content? This cannot be undone.')) return;
+    function esc(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function fmtBytes(b) {
+        if (!b) return '';
+        if (b < 1024) return `${b} B`;
+        if (b < 1024 * 1024) return `${(b / 1024).toFixed(2)} kB`;
+        return `${(b / 1024 / 1024).toFixed(2)} MB`;
+    }
+
+    function fmtDate(iso) {
         try {
-            const res = await apiFetch(`/content/${id}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Delete failed');
-            closeModal('content-modal-overlay');
-            await this.loadView(this.currentView);
-        } catch (err) { showError(err.message); }
+            return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        } catch (_) { return iso; }
     }
 
-    async _quickDelete(id) {
-        if (!confirm('Delete this content? This cannot be undone.')) return;
-        try {
-            const res = await apiFetch(`/content/${id}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Delete failed');
-            await this.loadView(this.currentView);
-        } catch (err) { showError(err.message); }
-    }
+    // ─── Spinner keyframe (inline) ────────────────────────────────────────
+    const spinStyle = document.createElement('style');
+    spinStyle.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+    document.head.appendChild(spinStyle);
 
-    async _handleAiUnderstand() {
-        const select = document.getElementById('ai-understand-book-select');
-        const bookId = select.value;
-        if (!bookId) { showError('Please select a book.'); return; }
-
-        const btn = document.getElementById('ai-understand-btn');
-        const resultContainer = document.getElementById('ai-understand-results');
-        
-        btn.textContent = 'Analyzing...';
-        btn.disabled = true;
-        resultContainer.style.display = 'block';
-        resultContainer.innerHTML = '<div class="spinner">Analyzing content via AI...</div>';
-
-        try {
-            const res = await apiFetch('/ai/understand', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content_id: parseInt(bookId, 10) })
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Analyze request failed');
-            
-            // Poll /content/{id}
-            const poll = async () => {
-                try {
-                    const cRes = await apiFetch(`/content/${bookId}`);
-                    if (!cRes.ok) throw new Error('Failed to retrieve content');
-                    const content = await cRes.json();
-                    
-                    if (content.ai_processed) {
-                        btn.textContent = 'Analyze Concept';
-                        btn.disabled = false;
-                        
-                        const keyConceptsList = (content.key_concepts || []).map(c => `<li>${c}</li>`).join('');
-                        resultContainer.innerHTML = `
-                            <div style="margin-top: 1rem; border-top: 1px solid var(--border-primary); padding-top: 1rem;">
-                                <h5 style="margin: 0 0 0.5rem 0; color: #9b59b6;">Difficulty: ${content.difficulty || 'Unknown'}</h5>
-                                <h5 style="margin: 0 0 0.25rem 0;">Summary</h5>
-                                <p style="margin: 0 0 1rem 0; font-size: 0.88rem; line-height: 1.4;">${content.summary || 'No summary available.'}</p>
-                                <h5 style="margin: 0 0 0.25rem 0;">Key Concepts</h5>
-                                <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.88rem; line-height: 1.4;">${keyConceptsList || '<li>None</li>'}</ul>
-                            </div>
-                        `;
-                    } else {
-                        setTimeout(poll, 3000);
-                    }
-                } catch (err) {
-                    showError(err.message);
-                    btn.textContent = 'Analyze Concept';
-                    btn.disabled = false;
-                    resultContainer.style.display = 'none';
-                }
-            };
-            setTimeout(poll, 1500);
-        } catch (err) {
-            showError(err.message);
-            btn.textContent = 'Analyze Concept';
-            btn.disabled = false;
-            resultContainer.style.display = 'none';
-        }
-    }
-
-    async _handleAiLearningPath() {
-        const topicInput = document.getElementById('ai-learning-path-topic');
-        const topic = topicInput.value.trim();
-        if (!topic) { showError('Please enter a topic.'); return; }
-
-        const btn = document.getElementById('ai-learning-path-btn');
-        const resultContainer = document.getElementById('ai-learning-path-results');
-        
-        btn.textContent = 'Generating...';
-        btn.disabled = true;
-        resultContainer.style.display = 'block';
-        resultContainer.innerHTML = '<div class="spinner">Curating curriculum from library...</div>';
-
-        try {
-            const res = await apiFetch('/ai/learning-path', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ topic: topic })
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || 'Failed to start learning path');
-            const data = await res.json();
-            const jobId = data.request_id;
-            
-            // Poll /ai/jobs/{id}
-            const poll = async () => {
-                try {
-                    const jRes = await apiFetch(`/ai/jobs/${jobId}`);
-                    if (!jRes.ok) throw new Error('Failed to query job status');
-                    const job = await jRes.json();
-                    
-                    if (job.status === 'completed') {
-                        btn.textContent = 'Generate Path';
-                        btn.disabled = false;
-                        
-                        const curriculum = job.result?.curriculum || [];
-                        if (curriculum.length === 0) {
-                            resultContainer.innerHTML = '<p>No curriculum path generated.</p>';
-                            return;
-                        }
-                        
-                        const phasesHtml = curriculum.map(p => `
-                            <div style="margin-top: 0.8rem; border-left: 2px solid #9b59b6; padding-left: 0.8rem;">
-                                <strong style="color: #9b59b6;">${p.phase}</strong>
-                                <p style="margin: 0.2rem 0; font-size: 0.85rem; line-height: 1.3;">${p.description}</p>
-                                <span style="font-size: 0.75rem; color: var(--text-light)">Books: ${p.resources.join(', ')}</span>
-                            </div>
-                        `).join('');
-                        
-                        resultContainer.innerHTML = `
-                            <div style="margin-top: 1rem; border-top: 1px solid var(--border-primary); padding-top: 1rem;">
-                                <h5 style="margin: 0;">Your Personalized Learning Path</h5>
-                                ${phasesHtml}
-                            </div>
-                        `;
-                    } else if (job.status === 'failed') {
-                        throw new Error('AI Job failed');
-                    } else {
-                        setTimeout(poll, 3000);
-                    }
-                } catch (err) {
-                    showError(err.message);
-                    btn.textContent = 'Generate Path';
-                    btn.disabled = false;
-                    resultContainer.style.display = 'none';
-                }
-            };
-            setTimeout(poll, 1500);
-        } catch (err) {
-            showError(err.message);
-            btn.textContent = 'Generate Path';
-            btn.disabled = false;
-            resultContainer.style.display = 'none';
-        }
-    }
-}
-
-/* ── Boot ─────────────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', () => {
-    new ThemeManager();
-    window.libraryManager = new LibraryManager();
+    // ─── Bootstrap ────────────────────────────────────────────────────────
+    updateSearchPlaceholder(0);
+    loadLocalLibrary();
 });
