@@ -1,4 +1,7 @@
 /* Insights Page Styles */
+body {
+    overflow-y: auto !important;
+}
 
 .insights-main {
     max-width: 1000px;

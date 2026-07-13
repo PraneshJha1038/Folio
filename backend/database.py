@@ -5,15 +5,9 @@ from sqlalchemy.orm import DeclarativeBase
 from urllib.parse import quote_plus
 load_dotenv()
 
-DATABASE_URL = (
-    f"postgresql+asyncpg://"
-    f"{os.getenv('DB_USER')}:{quote_plus(os.getenv('DB_PASSWORD'))}" #type:ignore
-    f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}"
-    f"/{os.getenv('DB_NAME')}"
-)
-
+DATABASE_URL = (os.getenv("DATABASE_URL"))
 engine = create_async_engine(
-    DATABASE_URL,
+    DATABASE_URL, #type:ignore
     pool_pre_ping= True,
     echo = os.getenv("DEBUG", "false").lower() == "true",
     pool_size = 10,
