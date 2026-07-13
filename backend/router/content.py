@@ -10,7 +10,11 @@ from dependencies import get_current_user, security
 from models import ContentSource, ContentGenre, ContentReport, User
 from auth_utils import decode_access_token
 from schemas import ContentSourceResponse, ContentReportResponse, Visibility, ContentType, ContentGenreCreate
-from services.storage import upload_file_to_cloudinary, extract_epub_cover_and_upload
+from services.storage import (
+    upload_file_to_cloudinary,
+    extract_epub_cover_and_upload,
+    extract_uploaded_text,
+)
 from services.scraper import scrape_url
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -51,19 +55,18 @@ async def upload_content(
             detail="Unsupported file extension. Only PDF and EPUB are supported."
         )
 
+    file_content = file.file.read()
+
     # 1. Upload to Cloudinary
-    file_url = upload_file_to_cloudinary(file)
+    file_url = upload_file_to_cloudinary(file_content, public_id=file.filename)
     
     # 1b. Extract and upload cover image for EPUB
     cover_image_url = None
     if content_type == ContentType.epub:
-        file.file.seek(0)
-        file_content = file.file.read()
         cover_image_url = extract_epub_cover_and_upload(file_content)
-    
-    # Estimate word count if possible (or default to 0 for uploads, calibrated later)
-    # Simple default for hackathon MVP uploads
-    word_count = 5000 
+
+    raw_text = extract_uploaded_text(file_content, content_type.value)
+    word_count = len(raw_text.split()) if raw_text else 5000
     
     db_title = title if title else os.path.splitext(filename)[0]
 
@@ -75,6 +78,7 @@ async def upload_content(
         author=author,
         file_path=file_url,
         cover_image_url=cover_image_url,
+        raw_text=raw_text,
         word_count=word_count,
         visibility=visibility.value
     )
@@ -83,15 +87,19 @@ async def upload_content(
     await db.commit()
     await db.refresh(content_source)
     
-    # Auto-add to user's library
+    # Auto-add to user's library with isolated failure handling
     from models import LibraryItem
-    library_item = LibraryItem(
-        user_id=current_user.id,
-        content_id=content_source.id,
-        is_finished=False
-    )
-    db.add(library_item)
-    await db.commit()
+    try:
+        library_item = LibraryItem(
+            user_id=current_user.id,
+            content_id=content_source.id,
+            is_finished=False
+        )
+        db.add(library_item)
+        await db.commit()
+    except Exception as e:
+        print(f"Isolated failure: Could not auto-add to local library. Error: {e}")
+        # We do not rollback or fail the upload request
     
     return content_source
 
@@ -166,16 +174,20 @@ async def upload_url(
     await db.commit()
     await db.refresh(content_source)
     
-    # Auto-add to user's library
+    # Auto-add to user's library with isolated failure handling
     from models import LibraryItem
-    library_item = LibraryItem(
-        user_id=current_user.id,
-        content_id=content_source.id,
-        is_finished=False
-    )
-    db.add(library_item)
-    await db.commit()
-    
+    try:
+        library_item = LibraryItem(
+            user_id=current_user.id,
+            content_id=content_source.id,
+            is_finished=False
+        )
+        db.add(library_item)
+        await db.commit()
+    except Exception as e:
+        print(f"Isolated failure: Could not auto-add to local library. Error: {e}")
+        # We do not rollback or fail the upload request
+        
     return content_source
 
 @router.get("/global")
@@ -236,6 +248,50 @@ async def get_content_by_id(
                 detail="Access denied to local content"
             )
             
+    return content
+
+from schemas import ContentSourceUpdate
+
+@router.patch("/{id}", response_model=ContentSourceResponse)
+async def update_content(
+    id: int,
+    body: ContentSourceUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(ContentSource).where(ContentSource.id == id))
+    content = result.scalar_one_or_none()
+    
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Content not found"
+        )
+        
+    # Enforce owner-only edit rule
+    if content.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only edit your own content"
+        )
+        
+    # Update allowed fields
+    if body.title is not None: content.title = body.title
+    if body.author is not None: content.author = body.author
+    if body.cover_image_url is not None: content.cover_image_url = body.cover_image_url
+    if body.visibility is not None: content.visibility = body.visibility.value
+    if body.description is not None: content.description = body.description
+    if body.tags is not None: content.tags = body.tags
+    if body.category is not None: content.category = body.category
+    if body.publisher is not None: content.publisher = body.publisher
+    if body.language is not None: content.language = body.language
+    if body.page_count is not None: content.page_count = body.page_count
+    if body.isbn is not None: content.isbn = body.isbn
+    if body.series is not None: content.series = body.series
+    if body.format is not None: content.format = body.format
+
+    await db.commit()
+    await db.refresh(content)
     return content
 
 class ReportBody(BaseModel):

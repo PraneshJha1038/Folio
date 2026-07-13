@@ -48,9 +48,21 @@
                 <svg id="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
                 <svg id="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             </button>
+            <!-- Insights -->
+            <button class="lib-icon-btn" id="btn-insights" title="Insights">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/><path d="m15.7 8.3-4.4 4.4"/><path d="M11.3 8.3 15.7 12.7"/></svg>
+            </button>
+            <!-- Plan Reading Time -->
+            <button class="lib-icon-btn" id="btn-optimize" title="Plan my reading time">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </button>
             <!-- Manage Shelves -->
             <button class="lib-icon-btn" id="btn-shelves" title="Manage Shelves">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            </button>
+            <!-- More Options -->
+            <button class="lib-icon-btn" id="btn-more-options" title="More Options" aria-haspopup="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
             </button>
         </div>
     </header>
@@ -71,8 +83,27 @@
         </button>
     </div>
 
+    <!-- ═══ MORE DROPDOWN POPOVER ═════════════════════════════════════════ -->
+    <div class="lib-add-popover" id="more-popover" aria-hidden="true" style="right: 20px; left: auto; transform: none;">
+        <button class="lib-popover-row" id="pop-bankruptcy" style="color: #ef4444;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            <span>Backlog Bankruptcy</span>
+        </button>
+    </div>
+
     <!-- Hidden file input -->
     <input type="file" id="file-input-hidden" accept=".pdf,.epub" style="display:none;">
+
+    <!-- ═══ GUILT BANNER ══════════════════════════════════════════════════ -->
+    <div id="guilt-banner" style="display: none; background: rgba(245, 158, 11, 0.1); border-bottom: 1px solid rgba(245, 158, 11, 0.2); padding: 12px 24px; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px; color: var(--text-primary); font-family: 'Bricolage Grotesque', sans-serif; font-size: 0.9rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" style="width:18px;height:18px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span id="guilt-banner-text">Loading suggestion...</span>
+        </div>
+        <button id="btn-close-guilt" style="background:none; border:none; color:var(--text-light); cursor:pointer; padding:4px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    </div>
 
     <!-- ═══ MAIN GRID AREA ════════════════════════════════════════════════ -->
     <main class="lib-main" id="lib-main">
@@ -182,6 +213,9 @@
 
             <!-- Action icons row -->
             <div class="lib-details-actions" id="detail-actions">
+                <button class="lib-detail-icon-btn" id="btn-worth-it" title="Is it worth it?">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                </button>
                 <button class="lib-detail-icon-btn" id="btn-detail-edit" title="Edit title & cover">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
@@ -225,6 +259,22 @@
         </div>
     </div>
 
+    <!-- ═══ WORTH IT MODAL ════════════════════════════════════════════════ -->
+    <div class="lib-modal-backdrop" id="worth-it-modal" aria-hidden="true">
+        <div class="lib-modal-box">
+            <button class="lib-modal-close" data-close="worth-it-modal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+            <h3 class="lib-modal-title">Is it worth reading?</h3>
+            <div id="worth-it-content">
+                <div class="lib-loading-container">
+                    <div class="lib-spinner"></div>
+                    <span id="worth-it-loading-text">Analyzing article...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══ PROFILE PANEL ════════════════════════════════════════════════ -->
     <div class="lib-modal-backdrop" id="profile-panel" aria-hidden="true">
         <div class="lib-modal-box">
@@ -259,6 +309,74 @@
                 </div>
             </div>
             <a href="profile.html" class="lib-secondary-btn" style="display:block;text-align:center;margin-top:1rem;text-decoration:none;">Full Profile →</a>
+        </div>
+    </div>
+
+    <!-- ═══ OPTIMIZE QUEUE MODAL ══════════════════════════════════════════ -->
+    <div class="lib-modal-backdrop" id="optimize-modal" aria-hidden="true">
+        <div class="lib-modal-box">
+            <button class="lib-modal-close" data-close="optimize-modal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+            <h3 class="lib-modal-title">Plan my reading time</h3>
+            <div id="optimize-input-view">
+                <div class="lib-field-group">
+                    <label>How many minutes do you have?</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="number" id="optimize-minutes" class="lib-input" value="30" min="5" step="5" style="width: 100px;">
+                        <span>minutes</span>
+                    </div>
+                </div>
+                <button class="lib-primary-btn" id="btn-do-optimize" style="margin-top:1rem;">Optimize Queue</button>
+            </div>
+            <div id="optimize-loading-view" style="display:none;">
+                <div class="lib-loading-container">
+                    <div class="lib-spinner"></div>
+                    <span>Optimizing reading queue...</span>
+                </div>
+            </div>
+            <div id="optimize-results-view" style="display:none;">
+                <div id="optimize-queue-list" style="margin-bottom: 1rem; display:flex; flex-direction:column; gap:8px;"></div>
+                <details style="font-family:'Bricolage Grotesque', sans-serif; font-size: 0.85rem; color: var(--text-light);">
+                    <summary style="cursor:pointer; padding: 4px 0;">Show skipped items</summary>
+                    <div id="optimize-skipped-list" style="margin-top: 8px; display:flex; flex-direction:column; gap:8px;"></div>
+                </details>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ BANKRUPTCY MODAL ══════════════════════════════════════════════ -->
+    <div class="lib-modal-backdrop" id="bankruptcy-modal" aria-hidden="true">
+        <div class="lib-modal-box" style="max-width: 600px;">
+            <button class="lib-modal-close" data-close="bankruptcy-modal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+            <h3 class="lib-modal-title" style="color: #ef4444;">Backlog Bankruptcy</h3>
+            <div id="bankruptcy-loading-view">
+                <div class="lib-loading-container">
+                    <div class="lib-spinner"></div>
+                    <span id="bankruptcy-loading-text">Analyzing backlog...</span>
+                </div>
+            </div>
+            <div id="bankruptcy-results-view" style="display:none;">
+                <p id="bankruptcy-summary" style="font-size: 0.95rem; color: var(--text-primary); font-family: 'Bricolage Grotesque', sans-serif; margin-bottom: 1rem;"></p>
+                
+                <div style="display: flex; gap: 1rem;">
+                    <div style="flex:1;">
+                        <h4 style="font-size: 0.85rem; color: #22c55e; margin-bottom: 8px; text-transform: uppercase;">Keep</h4>
+                        <div id="bankruptcy-keep-list" style="display:flex; flex-direction:column; gap:6px; max-height: 250px; overflow-y: auto;"></div>
+                    </div>
+                    <div style="flex:1;">
+                        <h4 style="font-size: 0.85rem; color: #ef4444; margin-bottom: 8px; text-transform: uppercase;">Remove</h4>
+                        <div id="bankruptcy-remove-list" style="display:flex; flex-direction:column; gap:6px; max-height: 250px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 1.5rem; display: flex; gap: 8px;">
+                    <button class="lib-primary-btn" id="btn-confirm-bankruptcy" style="background: #ef4444; flex:1;">Confirm & Remove Selected</button>
+                    <button class="lib-secondary-btn" data-close="bankruptcy-modal" style="flex:1;">Cancel</button>
+                </div>
+            </div>
         </div>
     </div>
 

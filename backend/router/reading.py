@@ -45,6 +45,11 @@ async def create_reading_session(
     # Increment user reading sessions count
     current_user.reading_sessions_count += 1
     
+    # Update library item progress
+    item.progress_percent = body.progress_pct
+    if body.progress_pct >= 100:
+        item.is_finished = True
+    
     # Recalibrate WPM if count >= 5
     if current_user.reading_sessions_count >= 5:
         # Get all reading sessions for this user's library items
@@ -135,7 +140,8 @@ async def create_bookmark_highlight(
         type=body.type.value,
         position=body.position,
         highlighted_text=body.highlighted_text,
-        note=body.note
+        note=body.note,
+        color=body.color
     )
     db.add(bookmark)
     await db.commit()

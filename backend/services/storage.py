@@ -27,6 +27,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 import io
 import posixpath
+from urllib.parse import unquote
 
 cloudinary.config(
     cloud_name=CLOUDINARY_CONFIG['cloud_name'],
@@ -35,21 +36,20 @@ cloudinary.config(
     secure=True
 )
 
-def upload_file_to_cloudinary(file: UploadFile) -> str:
+def upload_file_to_cloudinary(file_content: bytes, public_id: str | None = None) -> str:
     """
     Synchronously uploads an uploaded file to Cloudinary.
     Since we support PDF and EPUB (non-image files), we set resource_type to 'raw'.
     Returns the secure URL of the uploaded file.
     """
     try:
-        # Read file content
-        file_content = file.file.read()
-        
-        # Upload
+        upload_options = {"resource_type": "raw"}
+        if public_id:
+            upload_options["public_id"] = public_id
+
         response = cloudinary.uploader.upload(
             file_content,
-            public_id=file.filename,
-            resource_type="raw"
+            **upload_options
         )
         
         secure_url = response.get("secure_url")
@@ -64,6 +64,220 @@ def upload_file_to_cloudinary(file: UploadFile) -> str:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload file to Cloudinary: {str(e)}"
         )
+
+
+def extract_text_from_pdf(file_content: bytes) -> str | None:
+    """
+    Extract text from a PDF upload when pypdf is available, preserving structure and outline.
+    """
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        print("WARNING: pypdf is not installed! PDF text extraction is disabled. Run: pip install pypdf")
+        return None
+
+    try:
+        reader = PdfReader(io.BytesIO(file_content))
+        
+        # Try to read outline/bookmarks
+        outline = []
+        try:
+            def parse_outline(outline_list):
+                entries = []
+                for item in outline_list:
+                    if isinstance(item, list):
+                        entries.extend(parse_outline(item))
+                    else:
+                        title = item.get('/Title')
+                        page_num = None
+                        try:
+                            page_num = reader.get_destination_page_number(item)
+                        except Exception:
+                            pass
+                        if title:
+                            entries.append({"title": title, "page": page_num})
+                return entries
+            if reader.outline:
+                outline = parse_outline(reader.outline)
+        except Exception as e:
+            print(f"Failed to read PDF outline: {e}")
+            
+        pages = []
+        for i, page in enumerate(reader.pages):
+            page_text = page.extract_text() or ""
+            page_html = ""
+            
+            # Insert outline headings matching this page
+            matching_outline = [o for o in outline if o["page"] == i]
+            for o in matching_outline:
+                page_html += f"<h2 class='pdf-outline' id='pdf-page-{i}-{o['title'].replace(' ', '_')}'>{o['title']}</h2>\n"
+            
+            # Split page text into paragraphs
+            paragraphs = page_text.split("\n\n")
+            for p in paragraphs:
+                if p.strip():
+                    page_html += f"<p>{p.strip()}</p>\n"
+            
+            if page_html:
+                pages.append(f"<div class='pdf-page' id='pdf-p-{i}'>\n{page_html}\n</div>")
+                
+        text = "\n\n".join(pages).strip()
+        return text or None
+    except Exception as e:
+        print(f"Failed to extract PDF text: {e}")
+        return None
+
+
+
+
+def extract_text_from_epub(file_content: bytes) -> str | None:
+    """
+    Extract readable HTML structured content from EPUB chapters using BeautifulSoup.
+    """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        print("WARNING: BeautifulSoup (beautifulsoup4) is not installed!")
+        return None
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_content)) as archive:
+            try:
+                container_xml = archive.read("META-INF/container.xml")
+            except KeyError:
+                return None
+
+            container_tree = ET.fromstring(container_xml)
+            rootfile_path = None
+            for element in container_tree.iter():
+                if element.tag.split("}")[-1] == "rootfile":
+                    rootfile_path = element.attrib.get("full-path")
+                    break
+
+            if not rootfile_path:
+                return None
+
+            opf_bytes = archive.read(rootfile_path)
+            opf_tree = ET.fromstring(opf_bytes)
+            namespace_free = lambda tag: tag.split("}")[-1]
+
+            manifest = {}
+            spine = []
+            opf_dir = posixpath.dirname(rootfile_path)
+
+            for element in opf_tree.iter():
+                tag = namespace_free(element.tag)
+                if tag == "item":
+                    item_id = element.attrib.get("id")
+                    href = element.attrib.get("href")
+                    if item_id and href:
+                        manifest[item_id] = href
+                elif tag == "itemref":
+                    idref = element.attrib.get("idref")
+                    if idref:
+                        spine.append(idref)
+
+            chapter_texts = []
+            for item_id in spine:
+                href = manifest.get(item_id)
+                if not href:
+                    continue
+
+                href = unquote(href)
+                chapter_path = posixpath.join(opf_dir, href) if opf_dir else href
+                try:
+                    chapter_bytes = archive.read(chapter_path)
+                except KeyError:
+                    continue
+
+                try:
+                    import re
+                    import base64
+                    import mimetypes
+                    
+                    # Use html.parser which is built-in and safe
+                    soup = BeautifulSoup(chapter_bytes, "html.parser")
+                    
+                    # Strip stylesheet, scripts, metadata, link, and title elements (handling possible namespaces)
+                    for tag in soup.find_all(re.compile(r"(?:^|:)(?:style|script|link|meta|title)$", re.I)):
+                        tag.decompose()
+                        
+                    body = soup.find(re.compile(r"(?:^|:)body$", re.I))
+                    if body:
+                        chapter_html = "".join(str(child) for child in body.children)
+                    else:
+                        chapter_html = str(soup)
+                    
+                    # Prefix IDs to avoid collisions and rewrite internal hrefs
+                    chapter_id = href.replace("/", "_").replace(".", "_")
+                    chapter_soup = BeautifulSoup(chapter_html, "html.parser")
+                    
+                    # Wrap chapter in a div to serve as TOC target
+                    chapter_text = f"<div class='epub-chapter' id='{chapter_id}_start'>\n"
+                    
+                    for elem in chapter_soup.find_all(id=True):
+                        elem['id'] = f"{chapter_id}_{elem['id']}"
+                        
+                    for a in chapter_soup.find_all("a", href=True):
+                        link_href = a['href']
+                        if not (link_href.startswith("http://") or link_href.startswith("https://") or link_href.startswith("mailto:") or link_href.startswith("data:")):
+                            if "#" in link_href:
+                                file_part, anchor_part = link_href.split("#", 1)
+                            else:
+                                file_part, anchor_part = link_href, "start"
+                                
+                            if not file_part:
+                                target_id = f"{chapter_id}_{anchor_part}"
+                            else:
+                                target_href = posixpath.normpath(posixpath.join(posixpath.dirname(href), file_part))
+                                target_chapter_id = target_href.replace("/", "_").replace(".", "_")
+                                target_id = f"{target_chapter_id}_{anchor_part}"
+                                
+                            a['href'] = f"#{target_id}"
+                            
+                    # Embed images as base64
+                    for img in chapter_soup.find_all(["img", "image"]):
+                        src_attr = 'src' if img.name == 'img' else 'href'
+                        # In SVG, href might be xlink:href
+                        if not img.has_attr(src_attr):
+                            if img.has_attr('xlink:href'):
+                                src_attr = 'xlink:href'
+                            else:
+                                continue
+                                
+                        img_src = img[src_attr]
+                        if not (img_src.startswith("http://") or img_src.startswith("https://") or img_src.startswith("data:")):
+                            try:
+                                img_href = posixpath.normpath(posixpath.join(posixpath.dirname(href), img_src))
+                                img_bytes = archive.read(unquote(img_href))
+                                mime_type, _ = mimetypes.guess_type(img_href)
+                                if not mime_type:
+                                    mime_type = "image/jpeg"
+                                b64 = base64.b64encode(img_bytes).decode('utf-8')
+                                img[src_attr] = f"data:{mime_type};base64,{b64}"
+                            except Exception as e:
+                                print(f"Failed to embed image {img_src}: {e}")
+                                
+                    chapter_text += str(chapter_soup)
+                    chapter_text += "\n</div>"
+                    chapter_texts.append(chapter_text)
+                except Exception as e:
+                    print(f"Failed to parse chapter HTML: {e}")
+                    continue
+
+            text = "\n\n".join(chapter_texts).strip()
+            return text or None
+    except Exception as e:
+        print(f"Failed to extract EPUB text: {e}")
+        return None
+
+
+def extract_uploaded_text(file_content: bytes, file_type: str) -> str | None:
+    if file_type == "pdf":
+        return extract_text_from_pdf(file_content)
+    if file_type == "epub":
+        return extract_text_from_epub(file_content)
+    return None
 
 def extract_epub_cover_and_upload(file_content: bytes) -> str | None:
     """

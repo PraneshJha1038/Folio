@@ -1,28 +1,34 @@
-class ThemeManager{
-    constructor(){
-        this.themeIcon = document.getElementById("theme-icon");
-        this.themeToggle = document.getElementById("theme-toggle");
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        this.setTheme(savedTheme);
-        this.themeToggle?.addEventListener('click', ()=>this.toggleTheme());
+class ThemeManager {
+    constructor() {
+        this.themeToggle = document.getElementById('theme-toggle');
+        this.themeIcon = document.getElementById('theme-icon');
 
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        this.applyTheme(savedTheme);
+
+        if (this.themeToggle) {
+            this.themeToggle.addEventListener('click', () => this.toggleTheme());
+        }
     }
-    setTheme(theme){
+
+    applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
-        this.themeIcon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+        if (this.themeIcon) {
+            this.themeIcon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+        }
     }
-    toggleTheme(){
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-        this.setTheme(newTheme);
+
+    toggleTheme() {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'light' ? 'dark' : 'light';
+        this.applyTheme(next);
     }
 }
-const API_BASE = 'http://127.0.0.1:8000';
 
 function showError(message) {
     const toast = document.getElementById('error-toast');
-    if (!toast) return;
+    if (!toast) { console.error(message); return; }
     toast.textContent = message;
     toast.style.display = 'block';
     setTimeout(() => { toast.classList.add('show'); }, 10);
@@ -34,10 +40,10 @@ function showError(message) {
 
 class AuthManager {
     constructor() {
-        this.signinForm = document.getElementById("signin-form");
-        this.signupForm = document.getElementById("signup-form");
-        this.otpGroup = document.getElementById("otp-group");
-        this.signupOtpInput = document.getElementById("signup-otp");
+        this.signinForm = document.getElementById('signin-form');
+        this.signupForm = document.getElementById('signup-form');
+        this.otpGroup = document.getElementById('otp-group');
+        this.signupOtpInput = document.getElementById('signup-otp');
         this.isOtpSent = false;
 
         if (this.signinForm) {
@@ -46,23 +52,23 @@ class AuthManager {
         if (this.signupForm) {
             this.signupForm.addEventListener('submit', (e) => this.handleSignUp(e));
         }
+        this.fetchUserCount();
+        this.fetchItemCount();
     }
 
     async handleSignIn(e) {
         e.preventDefault();
-        const email = document.getElementById("signin-email").value;
-        const password = document.getElementById("signin-password").value;
+        const email = document.getElementById('signin-email').value;
+        const password = document.getElementById('signin-password').value;
 
         try {
-            const response = await fetch(`${API_BASE}/auth/login`, {
+            const response = await fetch(`http://127.0.0.1:8000/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
             });
-
             const data = await response.json();
             if (!response.ok) throw new Error(data.detail || 'Login failed');
-
             localStorage.setItem('access_token', data.access_token);
             window.location.href = 'library.html';
         } catch (error) {
@@ -72,49 +78,46 @@ class AuthManager {
 
     async handleSignUp(e) {
         e.preventDefault();
-        const name = document.getElementById("signup-name").value;
-        const email = document.getElementById("signup-email").value;
-        const password = document.getElementById("signup-password").value;
-        const confirmPassword = document.getElementById("signup-confirm").value;
+        const name = document.getElementById('signup-name').value;
+        const email = document.getElementById('signup-email').value;
+        const password = document.getElementById('signup-password').value;
+        const confirmPassword = document.getElementById('signup-confirm').value;
 
         if (password !== confirmPassword) {
-            showError("Passwords do not match");
+            showError('Passwords do not match');
             return;
         }
 
         if (!this.isOtpSent) {
             try {
-                const response = await fetch(`${API_BASE}/auth/send-otp`, {
+                const response = await fetch(`http://127.0.0.1:8000/auth/send-otp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, email, password })
                 });
-                
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.detail || 'Failed to send OTP');
-                
+
                 this.isOtpSent = true;
-                this.otpGroup.style.display = 'block';
-                this.signupOtpInput.disabled = false;
-                
+                if (this.otpGroup) this.otpGroup.style.display = 'block';
+                if (this.signupOtpInput) this.signupOtpInput.disabled = false;
+
                 const button = this.signupForm.querySelector('button[type="submit"]');
-                button.textContent = "Verify & Sign Up";
-                showError("OTP sent to your email.");
+                if (button) button.textContent = 'Verify & Sign Up';
+                showError('OTP sent to your email.');
             } catch (error) {
                 showError(error.message);
             }
         } else {
             const otp = this.signupOtpInput.value;
             try {
-                const response = await fetch(`${API_BASE}/auth/verify-otp`, {
+                const response = await fetch(`http://127.0.0.1:8000/auth/verify-otp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, email, password, otp })
                 });
-
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.detail || 'Sign up failed');
-
                 localStorage.setItem('access_token', data.access_token);
                 window.location.href = 'library.html';
             } catch (error) {
@@ -122,7 +125,45 @@ class AuthManager {
             }
         }
     }
+
+    async fetchUserCount() {
+        const userNumberEl = document.getElementById('user-number');
+        if (!userNumberEl) return;
+        try {
+            const response = await fetch(`http://127.0.0.1:8000/auth/users/count`);
+            const data = await response.json();
+            if (response.ok) {
+                userNumberEl.textContent = `${data.count}\n`;
+            } else {
+                console.error('Failed to fetch user count:', data);
+            }
+        } catch (error) {
+            console.error('Error fetching user count:', error);
+        }
+    }
+
+    async fetchItemCount(){
+        const itemNumberEl = document.getElementById('books-uploaded');
+        if(!itemNumberEl) return;
+        try {
+            const response = await fetch(`http://127.0.0.1:8000/auth/users/items`);
+            const data = await response.json();
+            if (response.ok) {
+                itemNumberEl.textContent = data.count;
+            } else {
+                console.error('Error fetching user count:', data);
+            }  
+            
+        } catch(error){
+            console.error("Error fetching item number:", error)
+        }
+    }
+    
 }
 
-this.themeManager = new ThemeManager();
-this.authManager = new AuthManager();
+// Initialize safely after DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    window.themeManager = new ThemeManager();
+    window.authManager = new AuthManager();
+    window.getUsers = new GetUsers();
+});

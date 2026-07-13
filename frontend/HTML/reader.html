@@ -3,136 +3,304 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Folio Reader</title>
+    <title>Reader - Folio</title>
     <link rel="stylesheet" href="../CSS/style.css">
     <link rel="stylesheet" href="../CSS/reader.css">
-    <link rel="shortcut icon" href="/public/favicon.png" type="image/x-icon">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap" rel="stylesheet">
-
-    <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
-    <!-- Epub.js deps -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Literata:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
-<body>
+<body class="reader-body" data-theme="default">
     <div id="error-toast" class="error-toast"></div>
 
-    <!-- Floating navbar — revealed on hover via CSS -->
-    <header class="rdr-nav" id="rdr-nav">
-        <div class="rdr-nav-left">
-            <button class="rdr-icon-btn" id="rdr-back-btn" title="Back to Library">
-                <i data-lucide="arrow-left"></i>
+    <!-- Top Ribbon (Hover to show) -->
+    <div id="top-ribbon" class="ribbon top-ribbon hidden">
+        <div class="ribbon-left">
+            <button id="btn-ribbon-sidebar" class="icon-btn" title="Toggle Sidebar">
+                <i data-lucide="panel-left"></i>
             </button>
-            <button class="rdr-icon-btn" id="rdr-toc-btn" title="Table of Contents">
-                <i data-lucide="list"></i>
+            <a href="library.html" class="icon-btn" title="Back to Library">
+                <i data-lucide="library"></i>
+            </a>
+        </div>
+        <div class="ribbon-center">
+            <span id="reader-title" class="reader-title-text">Loading...</span>
+        </div>
+        <div class="ribbon-right">
+            <button id="btn-ai-understand" class="icon-btn" title="AI Understand">
+                <i data-lucide="brain"></i>
             </button>
-            <span class="rdr-doc-title" id="rdr-doc-title">Loading…</span>
-        </div>
-        <div class="rdr-nav-right">
-            <button class="rdr-icon-btn" id="rdr-settings-btn" title="Settings"><i data-lucide="more-vertical"></i></button>
-        </div>
-    </header>
-
-    <div class="rdr-shell">
-        <!-- TOC Sidebar -->
-        <aside class="rdr-sidebar" id="rdr-sidebar">
-            <div class="rdr-sidebar-head">
-                <span class="rdr-sidebar-title">Contents</span>
-                <button class="rdr-icon-btn" id="rdr-close-toc"><i data-lucide="x"></i></button>
-            </div>
-            <ul class="rdr-toc-list" id="rdr-toc-list">
-                <li class="rdr-toc-empty">No table of contents</li>
-            </ul>
-        </aside>
-
-        <!-- Main reading area -->
-        <main class="rdr-main" id="rdr-main">
-            <!-- EPUB -->
-            <div class="rdr-engine" id="rdr-epub" style="display:none">
-                <button class="rdr-page-arrow rdr-page-prev" id="epub-prev"><i data-lucide="chevron-left"></i></button>
-                <div id="epub-viewer"></div>
-                <button class="rdr-page-arrow rdr-page-next" id="epub-next"><i data-lucide="chevron-right"></i></button>
-            </div>
-
-            <!-- PDF -->
-            <div class="rdr-engine rdr-pdf-engine" id="rdr-pdf" style="display:none">
-                <div class="rdr-pdf-scroll" id="rdr-pdf-scroll">
-                    <div class="rdr-canvas-wrap" id="rdr-canvas-wrap">
-                        <canvas id="pdf-canvas"></canvas>
-                        <div id="pdf-text-layer" class="rdr-text-layer"></div>
+            <button id="btn-settings" class="icon-btn" title="Settings">
+                <i data-lucide="settings"></i>
+            </button>
+            <div class="theme-dropdown-container">
+                <button id="btn-theme" class="icon-btn" title="Theme">
+                    <i data-lucide="palette"></i>
+                </button>
+                <div id="theme-dropdown" class="popup-panel hidden">
+                    <div class="theme-list">
+                        <button class="theme-option" data-theme="default">Default</button>
+                        <button class="theme-option" data-theme="gray">Gray</button>
+                        <button class="theme-option" data-theme="sepia">Sepia</button>
+                        <button class="theme-option" data-theme="grass">Grass</button>
+                        <button class="theme-option" data-theme="sky">Sky</button>
+                        <button class="theme-option" data-theme="solarized">Solarized</button>
+                        <button class="theme-option" data-theme="tree">Tree</button>
+                        <button class="theme-option" data-theme="nord">Nord</button>
+                        <button class="theme-option" data-theme="contrast">Contrast</button>
+                        <button class="theme-option" data-theme="sunset">Sunset</button>
+                        <button class="theme-option" data-theme="custom">Custom...</button>
                     </div>
                 </div>
-                <div class="rdr-pdf-controls">
-                    <button class="rdr-icon-btn" id="pdf-prev"><i data-lucide="chevron-up"></i></button>
-                    <span class="rdr-pdf-page-info"><span id="pdf-cur">1</span> / <span id="pdf-total">—</span></span>
-                    <button class="rdr-icon-btn" id="pdf-next"><i data-lucide="chevron-down"></i></button>
-                </div>
-            </div>
-
-            <!-- Article -->
-            <div class="rdr-engine rdr-article-engine" id="rdr-article" style="display:none">
-                <div class="rdr-article-body" id="rdr-article-body"></div>
-            </div>
-        </main>
-    </div>
-
-    <!-- Bottom progress -->
-    <div class="rdr-progress-track">
-        <div class="rdr-progress-fill" id="rdr-progress-fill"></div>
-    </div>
-
-    <!-- Settings Panel -->
-    <aside class="rdr-settings-panel" id="rdr-settings-panel">
-        <div class="rdr-settings-header">
-            <h3>Reader Settings</h3>
-            <button class="rdr-icon-btn" id="rdr-close-settings"><i data-lucide="x"></i></button>
-        </div>
-        <div class="rdr-settings-body">
-            <!-- Font Size -->
-            <div class="rdr-setting-group">
-                <label>Font Size</label>
-                <div class="font-size-slider-wrap">
-                    <span style="font-size:0.8rem">A</span>
-                    <input type="range" id="font-size-slider" min="12" max="28" value="16">
-                    <span style="font-size:1.2rem">A</span>
-                </div>
-            </div>
-            
-            <!-- Font Family -->
-            <div class="rdr-setting-group">
-                <label>Font Family</label>
-                <div class="font-grid" id="font-family-grid">
-                    <div class="font-btn active" data-font="'IBM Plex Serif', serif">Serif</div>
-                    <div class="font-btn" data-font="'Georgia', serif">Georgia</div>
-                    <div class="font-btn" data-font="'Lora', serif">Lora</div>
-                    <div class="font-btn" data-font="'Merriweather', serif">Merriweather</div>
-                    <div class="font-btn" data-font="'Open Sans', sans-serif">Open Sans</div>
-                    <div class="font-btn" data-font="monospace">Mono</div>
-                </div>
-            </div>
-            
-            <!-- Theme -->
-            <div class="rdr-setting-group">
-                <label>Theme</label>
-                <div class="theme-grid" id="theme-grid">
-                    <!-- Themes generated by JS -->
-                </div>
             </div>
         </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar docked">
+        <div class="sidebar-header-row">
+            <button id="btn-sidebar-toggle" class="icon-btn" title="Toggle Sidebar">
+                <i data-lucide="panel-left"></i>
+            </button>
+        </div>
+        <div class="sidebar-book-info">
+            <img id="sidebar-cover" src="" alt="Cover" class="sidebar-cover hidden">
+            <div class="sidebar-book-text">
+                <h2 id="sidebar-title">Book Title</h2>
+                <h3 id="sidebar-author">Author</h3>
+            </div>
+            <button id="btn-sidebar-info" class="icon-btn small" title="Book Info">
+                <i data-lucide="info"></i>
+            </button>
+        </div>
+        
+        <div class="sidebar-scroll-area">
+            <div id="list-hyperlinks" class="sidebar-list">
+                <!-- TOC items go here -->
+            </div>
+            <div id="list-annotations" class="sidebar-list hidden">
+                <!-- Annotations go here -->
+            </div>
+            <div id="list-bookmarks" class="sidebar-list hidden">
+                <!-- Bookmarks go here -->
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <button class="tab-btn active" data-target="list-hyperlinks" title="Contents">
+                <i data-lucide="list"></i>
+            </button>
+            <button class="tab-btn" data-target="list-annotations" title="Annotations">
+                <i data-lucide="highlighter"></i>
+            </button>
+            <button class="tab-btn" data-target="list-bookmarks" title="Bookmarks">
+                <i data-lucide="bookmark"></i>
+            </button>
+        </div>
+        <div id="sidebar-resizer" class="sidebar-resizer"></div>
     </aside>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
-    <script>
-        pdfjsLib.GlobalWorkerOptions.workerSrc =
-            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        lucide.createIcons();
-    </script>
+    <!-- Reading Surface -->
+    <main id="reading-surface" class="reading-surface">
+        <div class="reading-texture"></div>
+        <div id="content-container" class="content-container">
+            <!-- Text goes here in 2 columns -->
+        </div>
+    </main>
+
+    <!-- Bottom Ribbon (Hover to show) -->
+    <div id="bottom-ribbon" class="ribbon bottom-ribbon hidden">
+        <button id="btn-page-first" class="icon-btn" title="First Page"><i data-lucide="chevrons-left"></i></button>
+        <button id="btn-page-prev" class="icon-btn" title="Previous Page"><i data-lucide="chevron-left"></i></button>
+        <div class="ribbon-spacer"></div>
+        <input type="range" id="ribbon-progress" class="progress-slider" min="0" max="100" value="0">
+        <div class="ribbon-spacer"></div>
+        <button id="btn-page-next" class="icon-btn" title="Next Page"><i data-lucide="chevron-right"></i></button>
+        <button id="btn-page-last" class="icon-btn" title="Last Page"><i data-lucide="chevrons-right"></i></button>
+    </div>
+
+    <!-- Fixed Progress Bar (Bottom of reading surface) -->
+    <div id="fixed-progress" class="fixed-progress-bar">
+        <div class="progress-track">
+            <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <div class="progress-stats">
+            <span id="stat-pages">0 pages left</span>
+            <span id="stat-time">12:00 PM</span>
+            <span id="stat-percent">0%</span>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="popup-modal hidden">
+        <div class="settings-tabs">
+            <button class="settings-tab active" data-tab="tab-aa"><i data-lucide="type"></i></button>
+            <button class="settings-tab" data-tab="tab-layout"><i data-lucide="layout-template"></i></button>
+            <button class="settings-tab" data-tab="tab-search"><i data-lucide="search"></i></button>
+        </div>
+        <div class="settings-content">
+            <div id="tab-aa" class="tab-pane active">
+                <div class="setting-row">
+                    <label>Font Size</label>
+                    <div class="stepper">
+                        <button id="btn-font-dec"><i data-lucide="minus"></i></button>
+                        <span id="val-font-size">16px</span>
+                        <button id="btn-font-inc"><i data-lucide="plus"></i></button>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label>Font Weight</label>
+                    <div class="stepper">
+                        <button id="btn-weight-dec"><i data-lucide="minus"></i></button>
+                        <span id="val-font-weight">400</span>
+                        <button id="btn-weight-inc"><i data-lucide="plus"></i></button>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label>Font Face</label>
+                    <select id="sel-font-face" class="folio-select">
+                        <option value="Lora">Lora (Serif)</option>
+                        <option value="Literata">Literata</option>
+                        <option value="Merriweather">Merriweather</option>
+                        <option value="Crimson Text">Crimson Text</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Palatino Linotype">Palatino</option>
+                        <option value="Garamond">Garamond</option>
+                        <option value="Atkinson Hyperlegible">Atkinson Hyperlegible</option>
+                        <option value="Verdana">Verdana</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                    </select>
+                </div>
+            </div>
+            <div id="tab-layout" class="tab-pane hidden">
+                <div class="setting-row">
+                    <label>Reading Mode</label>
+                    <select id="sel-reading-mode" class="folio-select">
+                        <option value="horizontal">Horizontal (Pages)</option>
+                        <option value="vertical">Vertical (Scroll)</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label>Paragraph Margin</label>
+                    <div class="stepper">
+                        <button id="btn-pmargin-dec"><i data-lucide="minus"></i></button>
+                        <span id="val-pmargin">1.0</span>
+                        <button id="btn-pmargin-inc"><i data-lucide="plus"></i></button>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label>Line Spacing</label>
+                    <div class="stepper">
+                        <button id="btn-lspace-dec"><i data-lucide="minus"></i></button>
+                        <span id="val-lspace">1.5</span>
+                        <button id="btn-lspace-inc"><i data-lucide="plus"></i></button>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label>Top Margin</label>
+                    <div class="stepper">
+                        <button id="btn-tmargin-dec"><i data-lucide="minus"></i></button>
+                        <span id="val-tmargin">40px</span>
+                        <button id="btn-tmargin-inc"><i data-lucide="plus"></i></button>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label>Bottom Margin</label>
+                    <div class="stepper">
+                        <button id="btn-bmargin-dec"><i data-lucide="minus"></i></button>
+                        <span id="val-bmargin">40px</span>
+                        <button id="btn-bmargin-inc"><i data-lucide="plus"></i></button>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label>Left Margin</label>
+                    <div class="stepper">
+                        <button id="btn-lrmargin-dec"><i data-lucide="minus"></i></button>
+                        <span id="val-lmargin">40px</span>
+                        <button id="btn-lrmargin-inc"><i data-lucide="plus"></i></button>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label>Right Margin</label>
+                    <div class="stepper">
+                        <button id="btn-rrmargin-dec"><i data-lucide="minus"></i></button>
+                        <span id="val-rmargin">40px</span>
+                        <button id="btn-rrmargin-inc"><i data-lucide="plus"></i></button>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label>24-hour Clock</label>
+                    <label class="switch">
+                        <input type="checkbox" id="chk-24h">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div id="tab-search" class="tab-pane hidden">
+                <input type="text" id="setting-search" placeholder="Search settings..." class="folio-input">
+                <div id="search-results" class="search-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Theme Modal -->
+    <div id="custom-theme-modal" class="popup-modal hidden">
+        <div class="modal-header">
+            <h3>Custom Theme</h3>
+            <button id="btn-close-custom-theme" class="icon-btn small"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="setting-row">
+                <label>Background</label>
+                <input type="color" id="color-bg" value="#ffffff">
+            </div>
+            <div class="setting-row">
+                <label>Text Color</label>
+                <input type="color" id="color-text" value="#000000">
+            </div>
+            <div class="setting-row">
+                <label>Link Color</label>
+                <input type="color" id="color-link" value="#3b82f6">
+            </div>
+            <div class="theme-preview" id="theme-preview">
+                <p>Preview text. This is how your custom theme will look.</p>
+                <a href="#">Example link</a>
+            </div>
+            <button id="btn-save-theme" class="folio-btn primary full-width">Save Theme</button>
+        </div>
+    </div>
+
+    <!-- Details Modal (reused from library) -->
+    <div id="book-details-modal" class="popup-modal hidden" style="width: 400px;">
+        <div class="modal-header">
+            <h3>Book Info</h3>
+            <button class="icon-btn small" id="btn-close-details"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body">
+            <p id="details-text">Loading...</p>
+        </div>
+    </div>
+    
+    <!-- AI Understand Modal -->
+    <div id="ai-understand-modal" class="popup-modal hidden" style="width: 500px; max-width: 90vw;">
+        <div class="modal-header">
+            <h3><i data-lucide="brain"></i> AI Understanding</h3>
+            <button class="icon-btn small" id="btn-close-ai"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+            <p id="ai-understand-text">Thinking...</p>
+        </div>
+    </div>
+
+    <!-- Future Self Predictor Toast -->
+    <div id="prediction-toast" style="display:none; position:fixed; bottom: 24px; right: 24px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; font-family: 'Bricolage Grotesque', sans-serif; opacity: 0; transition: opacity 0.5s ease;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="width:18px;height:18px;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <span style="font-weight:600; font-size:0.9rem; color:var(--text-primary);">Future Self Predictor</span>
+        </div>
+        <div id="prediction-text" style="font-size:0.85rem; color:var(--text-secondary); line-height:1.4;"></div>
+    </div>
+
+    <script src="../js/api.js"></script>
     <script src="../js/reader.js"></script>
 </body>
 </html>

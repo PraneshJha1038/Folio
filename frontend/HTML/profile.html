@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Folio - Profile</title>
+    <link rel="stylesheet" href="../CSS/style.css">
+    <link rel="shortcut icon" href="/public/favicon.png" type="image/x-icon">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sniglet:wght@400;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap" rel="stylesheet">
+    <style>
+        .profile-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: var(--space-lg);
+        }
+        
+        .profile-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-md);
+            margin-bottom: 3rem;
+        }
+        
+        .stat-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-family: 'IBM Plex Serif', serif;
+            font-size: 2.5rem;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            font-family: 'Bricolage Grotesque', serif;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 0.85rem;
+        }
+        
+        .section-title {
+            font-family: 'IBM Plex Serif', serif;
+            font-size: 1.5rem;
+            margin-bottom: var(--space-md);
+            color: var(--text-primary);
+        }
+        
+        .genres-container {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+        }
+        
+        .genre-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        
+        .genre-chip {
+            background-color: color-mix(in srgb, var(--accent) 20%, transparent);
+            color: var(--accent);
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-family: 'Bricolage Grotesque', serif;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .genre-chip i {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        
+        .genre-chip i:hover {
+            color: var(--text-primary);
+        }
+        
+        .genre-select-wrapper {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .genre-select {
+            flex: 1;
+            padding: 0.75rem;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-primary);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Bricolage Grotesque', serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="error-toast" class="error-toast"></div>
+    
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="nav-hero">
+                <span class="ibm-plex-serif-medium">folio</span>
+            </div>
+            <div class="nav-auth">
+                <div class="nav-menu">
+                    <a href="library.html" class="nav-links">Library</a>
+                    <a href="ai_booth.html" class="nav-links">AI Booth</a>
+                    <a href="profile.html" class="nav-links active">Profile</a>
+                    <a href="#" class="nav-links" id="logout-btn">Sign Out</a>
+                </div>
+                <div class="theme-toggle" id="theme-toggle">
+                    <i class="fas fa-sun" id="theme-icon"></i>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="profile-container">
+        <div class="profile-header">
+            <h1 class="ibm-plex-serif-medium" id="profile-name">My Profile</h1>
+            <p id="profile-email" style="color: var(--text-light); font-family: 'Bricolage Grotesque', serif;"></p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-words">0</div>
+                <div class="stat-label">Words Read</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-time">0h</div>
+                <div class="stat-label">Time Read</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-wpm">200</div>
+                <div class="stat-label">Current WPM</div>
+            </div>
+        </div>
+
+        <div class="genres-container">
+            <h2 class="section-title">Favorite Genres</h2>
+            <div class="genre-select-wrapper">
+                <select class="genre-select" id="genre-dropdown">
+                    <option value="">Select a genre to add...</option>
+                    <!-- Populated via JS -->
+                </select>
+                <button class="auth-button" id="add-genre-btn" style="width: auto; padding: 0 1.5rem;">Add</button>
+            </div>
+            <div class="genre-chips" id="genre-chips-container">
+                <!-- Chips injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/main.js"></script>
+    <script src="../js/profile.js"></script>
+</body>
+</html>

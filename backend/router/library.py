@@ -139,6 +139,9 @@ async def update_library_item(
             item.is_finished = False
             item.finished_at = None
             
+    if body.is_favorite is not None:
+        item.is_favorite = body.is_favorite
+            
     await db.commit()
     await db.refresh(item)
     return item

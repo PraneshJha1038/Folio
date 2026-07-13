@@ -1,18 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from datetime import datetime, timedelta, timezone
 import random
 import hashlib
 import bcrypt
 
 from database import get_db
-from models import User, PendingOtp
+from models import User, PendingOtp, LibraryItem
 from auth_utils import create_access_token
 from services.email_service import send_otp_email
 from dependencies import get_current_user
-from schemas import UserResponse
+from schemas import UserResponse, UserUpdate
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -159,7 +160,34 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.get("/users/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # The current_user is already fetched by the dependency, but the dependency uses the same db session.
-    # We commit to close the read transaction properly.
     await db.commit()
     return current_user
+
+@router.patch("/users/me", response_model=UserResponse)
+async def update_me(
+    body: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if body.display_name is not None:
+        current_user.display_name = body.display_name
+    if body.default_wpm is not None:
+        current_user.default_wpm = body.default_wpm
+    if body.current_wpm is not None:
+        current_user.current_wpm = body.current_wpm
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+@router.get("/users/count")
+async def get_users_count(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(func.count(User.id)))
+    count = result.scalar()
+    await db.commit()
+    return {"count": count}
+@router.get("/users/items")
+async def get_items_count(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(func.count(LibraryItem.id)))
+    count = result.scalar()
+    await db.commit()
+    return {"count": count}

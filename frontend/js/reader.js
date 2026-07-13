@@ -1,499 +1,972 @@
-/* ============================================================
-   reader.js — Full rewrite
-   Fixes:
-   - raw_text null crash (article engine guards for null)
-   - icon layout in floating nav
-   - theme toggle mirrors index.html / library.js
-   - TOC sidebar toggle
-   - font-size controls wired correctly
-   - progress bar on all engines
-   ============================================================ */
+console.log("reader.js script loaded into browser.");
 
-const API_BASE = 'http://127.0.0.1:8000';
+// --- State Variables ---
+let contentId = null;
+let libraryItemId = null;
+let contentData = null;
+let totalPages = 1;
+let currentPage = 1;
+let annotations = [];
+let bookmarks = [];
+let pseudoTOC = [];
+let sessionStartTime = null;
+let isVerticalMode = false;
 
-/* ── Utilities ────────────────────────────────────────────── */
-function showError(msg) {
-    const t = document.getElementById('error-toast');
-    if (!t) return;
-    t.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(t._t);
-    t._t = setTimeout(() => t.classList.remove('show'), 5000);
-}
+// --- DOM Elements ---
+const DOM = {
+    // Ribbons
+    topRibbon: document.getElementById('top-ribbon'),
+    bottomRibbon: document.getElementById('bottom-ribbon'),
+    
+    // Sidebar
+    sidebar: document.getElementById('sidebar'),
+    sidebarCover: document.getElementById('sidebar-cover'),
+    sidebarTitle: document.getElementById('sidebar-title'),
+    sidebarAuthor: document.getElementById('sidebar-author'),
+    
+    // Sidebar Lists
+    listHyperlinks: document.getElementById('list-hyperlinks'),
+    listAnnotations: document.getElementById('list-annotations'),
+    listBookmarks: document.getElementById('list-bookmarks'),
+    
+    // Reading Surface
+    contentContainer: document.getElementById('content-container'),
+    
+    // Progress
+    ribbonProgress: document.getElementById('ribbon-progress'),
+    fixedProgressFill: document.getElementById('progress-fill'),
+    statPages: document.getElementById('stat-pages'),
+    statTime: document.getElementById('stat-time'),
+    statPercent: document.getElementById('stat-percent'),
+    
+    // Modals
+    settingsModal: document.getElementById('settings-modal'),
+    themeDropdown: document.getElementById('theme-dropdown'),
+    customThemeModal: document.getElementById('custom-theme-modal'),
+    
+    // Ribbon buttons
+    btnSidebarToggleTop: document.getElementById('btn-ribbon-sidebar'),
+    btnSidebarToggleSide: document.getElementById('btn-sidebar-toggle'),
+    btnSettings: document.getElementById('btn-settings'),
+    btnTheme: document.getElementById('btn-theme'),
+    btnPageFirst: document.getElementById('btn-page-first'),
+    btnPagePrev: document.getElementById('btn-page-prev'),
+    btnPageNext: document.getElementById('btn-page-next'),
+    btnPageLast: document.getElementById('btn-page-last'),
+    selReadingMode: document.getElementById('sel-reading-mode'),
+    btnAiUnderstand: document.getElementById('btn-ai-understand'),
+    btnSidebarInfo: document.getElementById('btn-sidebar-info'),
+    
+    // AI Modal
+    aiUnderstandModal: document.getElementById('ai-understand-modal'),
+    btnCloseAi: document.getElementById('btn-close-ai'),
+    aiUnderstandText: document.getElementById('ai-understand-text'),
+    
+    // Details Modal
+    bookDetailsModal: document.getElementById('book-details-modal'),
+    btnCloseDetails: document.getElementById('btn-close-details'),
+    detailsText: document.getElementById('details-text'),
+};
 
-/* ── ThemeManager (mirrors index.html exactly) ─────────────── */
-class ThemeManager {
-    constructor() {
-        this.toggle = document.getElementById('theme-toggle');
-        this.icon   = document.getElementById('theme-icon');
-        const saved = localStorage.getItem('theme') || 'dark';
-        this.setTheme(saved);
-        this.toggle?.addEventListener('click', () => this.toggleTheme());
+// --- Initialization ---
+async function initReader() {
+    console.log("initReader started");
+    const params = new URLSearchParams(window.location.search);
+    contentId = parseInt(params.get('id'));
+    console.log("Parsed contentId:", contentId);
+    
+    if (!contentId) {
+        console.error("No content ID provided in URL!");
+        document.getElementById('reader-title').textContent = "No book selected";
+        DOM.sidebarTitle.textContent = "No book selected";
+        DOM.sidebarAuthor.textContent = "Please open a book from the library.";
+        DOM.contentContainer.innerHTML = '<div style="padding: 40px; text-align: center;"><h2>No book selected.</h2><p>Please return to the library and select a book to read.</p></div>';
+        return;
     }
-    setTheme(theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
-        if (this.icon) this.icon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
-    }
-    toggleTheme() {
-        const cur = document.documentElement.getAttribute('data-theme');
-        this.setTheme(cur === 'light' ? 'dark' : 'light');
-        // Let the active engine update its iframe (EPUB)
-        if (window._readerEngine && window._readerEngine.onThemeChange) {
-            window._readerEngine.onThemeChange(cur === 'light' ? 'dark' : 'light');
-        }
-    }
-}
 
-/* ══════════════════════════════════════════════════════════
-   UniversalReader
-   ══════════════════════════════════════════════════════════ */
-class UniversalReader {
-    constructor() {
-        if (!localStorage.getItem('access_token')) {
-            window.location.href = 'index.html';
-            return;
-        }
-
-        const params = new URLSearchParams(window.location.search);
-        this.contentId = params.get('id');
-        this.libraryItemId = params.get('library_item_id');
-        this.progressPct = 0.0;
-        if (!this.contentId) {
-            window.location.href = 'library.html';
-            return;
-        }
-
-        this.fontSize = 17; // px — used by font controls
-        this.progressEl = document.getElementById('rdr-progress-fill');
-
-        this._bindNav();
-        this._fetchAndRender();
-    }
-
-    /* ── Nav controls & Session Logging ────────────────── */
-    _bindNav() {
-        this.startTime = Date.now();
+    loadSettings();
+    applySettingsToCSS();
+    
+    sessionStartTime = Date.now();
+    
+    document.getElementById('reader-title').textContent = "Loading book...";
+    
+    try {
+        // Find library item for this content
+        console.log("Fetching library items to find libItem...");
+        const libRes = await api.get('/library?limit=80');
+        console.log("libRes:", libRes);
+        const items = libRes.items || libRes || [];
+        const libItem = items.find(i => i.content_source && i.content_source.id === contentId);
         
-        const logSessionAndLeave = async () => {
-            await this._logReadingSession();
-            window.location.href = 'library.html';
-        };
-
-        document.getElementById('rdr-back-btn').addEventListener('click', (e) => {
-            e.preventDefault();
-            logSessionAndLeave();
-        });
-        
-        window.addEventListener('beforeunload', () => {
-            // Synchronous sendBeacon is better for unload events if available
-            this._logReadingSession(true);
-        });
-
-        // TOC sidebar
-        const sidebar = document.getElementById('rdr-sidebar');
-        document.getElementById('rdr-toc-btn').addEventListener('click', () => {
-            sidebar.classList.toggle('open');
-        });
-        document.getElementById('rdr-close-toc').addEventListener('click', () => {
-            sidebar.classList.remove('open');
-        });
-
-        // Settings panel
-        const settingsPanel = document.getElementById('rdr-settings-panel');
-        document.getElementById('rdr-settings-btn').addEventListener('click', () => {
-            settingsPanel.classList.toggle('open');
-        });
-        document.getElementById('rdr-close-settings').addEventListener('click', () => {
-            settingsPanel.classList.remove('open');
-        });
-
-        // Font size slider
-        const fontSlider = document.getElementById('font-size-slider');
-        fontSlider.addEventListener('input', (e) => {
-            this.fontSize = parseInt(e.target.value, 10);
-            document.documentElement.style.setProperty('--rdr-font-size', `${this.fontSize}px`);
-            if (window._readerEngine?.onFontChange) window._readerEngine.onFontChange(this.fontSize);
-        });
-
-        // Font family grid
-        document.querySelectorAll('.font-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.font-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const font = btn.dataset.font;
-                document.documentElement.style.setProperty('font-family', font, 'important');
-                document.body.style.setProperty('font-family', font, 'important');
-                if (window._readerEngine?.onFontFamilyChange) window._readerEngine.onFontFamilyChange(font);
-            });
-        });
-
-        // 12 Themes
-        const themes = ['light', 'dark', 'sepia', 'forest', 'ocean', 'dusk', 'nord', 'solarized', 'dracula', 'rose', 'slate', 'paper'];
-        const themeGrid = document.getElementById('theme-grid');
-        themeGrid.innerHTML = '';
-        themes.forEach(theme => {
-            const btn = document.createElement('div');
-            btn.className = 'theme-btn';
-            btn.setAttribute('data-theme', theme);
-            // Quick visual representation
-            btn.style.background = `var(--bg-primary)`;
-            // Wait, we need the colours explicitly or CSS will handle it?
-            // Actually, we can just apply the attribute to the document when hovered or clicked,
-            // but for the button itself to look like the theme, we can just hardcode its bg/border or let it inherit.
-            // A simple trick: set a class and let CSS handle it, but wait, variables apply globally.
-            // Let's hardcode background colors for the buttons so they look right.
-            const bgColors = {
-                light: '#ffffff', dark: '#121212', sepia: '#f4ecd8', forest: '#e4efe4', 
-                ocean: '#e6f0f5', dusk: '#2b2b36', nord: '#2e3440', solarized: '#fdf6e3', 
-                dracula: '#282a36', rose: '#fff0f5', slate: '#1e293b', paper: '#fdfdfc'
-            };
-            const textColors = {
-                light: '#111111', dark: '#eeeeee', sepia: '#433422', forest: '#1e3b1e',
-                ocean: '#1c3d52', dusk: '#e2e2ec', nord: '#eceff4', solarized: '#657b83',
-                dracula: '#f8f8f2', rose: '#4a2333', slate: '#f8fafc', paper: '#333333'
-            };
-            btn.style.backgroundColor = bgColors[theme];
-            btn.style.border = `1px solid ${textColors[theme]}`;
-            btn.title = theme;
-            
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                document.documentElement.setAttribute('data-theme', theme);
-                localStorage.setItem('theme', theme);
-                if (window._readerEngine?.onThemeChange) window._readerEngine.onThemeChange(theme);
-            });
-            themeGrid.appendChild(btn);
-        });
-
-        // Initialize saved theme
-        const savedTheme = localStorage.getItem('theme') || 'light';
-        document.documentElement.setAttribute('data-theme', savedTheme);
-        const activeThemeBtn = themeGrid.querySelector(`[data-theme="${savedTheme}"]`);
-        if (activeThemeBtn) activeThemeBtn.classList.add('active');
-    }
-
-    async _logReadingSession(isUnload = false) {
-        if (!this.startTime || this._sessionLogged) return;
-        if (!this.libraryItemId) {
-            console.warn('Cannot log session: library_item_id is not resolved yet');
-            return;
-        }
-        this._sessionLogged = true; // prevent double logging
-        const durationSec = Math.floor((Date.now() - this.startTime) / 1000);
-        if (durationSec < 10) return; // Don't log trivial opens
-
-        // Default WPM from localStorage or assume 250
-        const wpm = parseInt(localStorage.getItem('default_wpm') || '250', 10);
-        const wordsCovered = Math.max(1, Math.floor((durationSec / 60) * wpm));
-        
-        const payload = {
-            library_item_id: parseInt(this.libraryItemId, 10),
-            duration_sec: durationSec,
-            words_covered: wordsCovered,
-            progress_pct: parseFloat(this.progressPct || 0.0)
-        };
-
-        const token = localStorage.getItem('access_token');
-        if (!token) return;
-
-        if (isUnload && navigator.sendBeacon) {
-            const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-            fetch(`${API_BASE}/reading/sessions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify(payload),
-                keepalive: true
-            }).catch(e => console.error(e));
+        if (libItem) {
+            console.log("Found local library item:", libItem.id);
+            libraryItemId = libItem.id;
+            contentData = libItem.content_source;
+            window.initialProgress = libItem.progress_percent || 0;
         } else {
-            try {
-                await fetch(`${API_BASE}/reading/sessions`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify(payload)
-                });
-            } catch(e) { console.error('Failed to log session', e); }
-        }
-    }
-
-    /* ── Fetch content metadata then launch engine ─────── */
-    async _fetchAndRender() {
-        try {
-            const token = localStorage.getItem('access_token');
-            
-            // Fallback: Resolve library_item_id if not present in URL query
-            if (!this.libraryItemId) {
-                const libRes = await fetch(`${API_BASE}/library`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (libRes.ok) {
-                    const libData = await libRes.json();
-                    const matched = (libData.items || []).find(item => item.content_id == this.contentId);
-                    if (matched) {
-                        this.libraryItemId = matched.id;
-                    }
-                }
+            console.log("Item not in local library. Fetching global items...");
+            // Might be a global item, but we can't save reading sessions or bookmarks without a library_item_id
+            // For this implementation, we require it to be in local library, but let's try to fetch it from global just in case
+            const globRes = await api.get('/content/global?limit=80');
+            console.log("globRes:", globRes);
+            const globItems = globRes.items || globRes || [];
+            contentData = globItems.find(c => c.id === contentId);
+            if (!contentData) {
+                console.error("Content not found globally either.");
+                throw new Error("Content not found.");
             }
+        }
+        
+        console.log("contentData resolved:", contentData.title);
+        document.getElementById('reader-title').textContent = contentData.title;
+        DOM.sidebarTitle.textContent = contentData.title;
+        DOM.sidebarAuthor.textContent = contentData.author || 'Unknown Author';
+        if (contentData.cover_image_url) {
+            DOM.sidebarCover.src = contentData.cover_image_url;
+            DOM.sidebarCover.classList.remove('hidden');
+        }
 
-            const res = await fetch(`${API_BASE}/content/${this.contentId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.status === 401) { window.location.href = 'index.html'; return; }
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        console.log("Calling renderContent()...");
+        renderContent();
+        
+        if (libraryItemId) {
+            console.log("Fetching annotations...");
+            await fetchAnnotationsAndBookmarks();
+            // Start listening for page unload to save session
+            window.addEventListener('beforeunload', saveReadingSession);
+        }
+        console.log("initReader completed successfully.");
+        
+    } catch (e) {
+        console.error("Error inside initReader try-catch:", e);
+        document.getElementById('reader-title').textContent = "Error loading book.";
+    }
+}
 
-            const doc = await res.json();
-            document.getElementById('rdr-doc-title').textContent = doc.title || 'Untitled';
-            document.title = `Folio – ${doc.title || 'Reader'}`;
-
-            const type = (doc.type || '').toLowerCase();
-
-            if (type === 'epub') {
-                document.getElementById('rdr-epub').style.display = 'flex';
-                window._readerEngine = new EPUBEngine(doc.file_path, this);
-            } else if (type === 'pdf') {
-                document.getElementById('rdr-pdf').style.display = 'flex';
-                window._readerEngine = new PDFEngine(doc.file_path, this);
+function renderContent() {
+    const rawText = contentData.raw_text || "No text available.";
+    pseudoTOC = [];
+    
+    const isHtml = contentData.type === 'epub' || contentData.type === 'pdf' || rawText.trim().startsWith('<') || /<[a-z][\s\S]*>/i.test(rawText);
+    
+    if (isHtml) {
+        DOM.contentContainer.innerHTML = rawText;
+        
+        // Scan for headings to populate TOC
+        const headings = DOM.contentContainer.querySelectorAll('h1, h2, h3, h4, .pdf-outline');
+        headings.forEach((h, index) => {
+            if (!h.id) {
+                h.id = `heading-${index}`;
+            }
+            const label = h.textContent.trim();
+            if (label) {
+                pseudoTOC.push({ label: label, id: h.id });
+            }
+        });
+    } else {
+        // Plain text parsing
+        const paragraphs = rawText.split('\n\n').filter(p => p.trim());
+        let html = '';
+        paragraphs.forEach((p, index) => {
+            if (/^chapter\s+\d+/i.test(p.trim()) || /^part\s+\d+/i.test(p.trim())) {
+                html += `<h2 id="chap-${index}">${p.trim()}</h2>`;
+                pseudoTOC.push({ label: p.trim(), id: `chap-${index}` });
             } else {
-                // article / url-scraped
-                document.getElementById('rdr-article').style.display = 'flex';
-                window._readerEngine = new ArticleEngine(doc, this);
+                html += `<p>${p.trim()}</p>`;
             }
-
-            lucide.createIcons();
-        } catch (err) {
-            showError('Could not load document: ' + err.message);
-        }
-    }
-
-    /* ── Progress helper ───────────────────────────────── */
-    setProgress(pct) {
-        this.progressPct = pct;
-        if (this.progressEl) this.progressEl.style.width = `${Math.round(pct)}%`;
-    }
-
-    /* ── TOC render helper ─────────────────────────────── */
-    renderTOC(items) {
-        const list = document.getElementById('rdr-toc-list');
-        list.innerHTML = '';
-        if (!items || items.length === 0) {
-            list.innerHTML = '<li class="rdr-toc-empty">No table of contents</li>';
-            return;
-        }
-        items.forEach(item => {
-            const li = document.createElement('li');
-            li.textContent = item.label || 'Section';
-            li.addEventListener('click', () => {
-                document.getElementById('rdr-sidebar').classList.remove('open');
-                if (window._readerEngine?.goTo) window._readerEngine.goTo(item.dest);
-            });
-            list.appendChild(li);
         });
+        DOM.contentContainer.innerHTML = html;
     }
+    
+    // Need a slight delay to allow CSS multi-column to calculate layout
+    setTimeout(() => {
+        calculatePagination();
+        renderTOC();
+        
+        if (window.initialProgress) {
+            const targetPage = Math.max(1, Math.min(totalPages, Math.round((window.initialProgress / 100) * (totalPages - 1)) + 1));
+            goToPage(targetPage);
+            window.initialProgress = null; // Clear it so we don't jump again on resize
+        }
+    }, 100);
 }
 
-/* ══════════════════════════════════════════════════════════
-   EPUB Engine — wraps epub.js
-   ══════════════════════════════════════════════════════════ */
-class EPUBEngine {
-    constructor(url, reader) {
-        if (!url) { showError('No file URL for EPUB.'); return; }
-
-        this.reader = reader;
-        this.book = ePub(url);
-        this.rendition = this.book.renderTo('epub-viewer', {
-            width: '100%',
-            height: '100%',
-            spread: 'none',
-        });
-        this.rendition.display();
-
-        // Apply initial theme
-        const theme = localStorage.getItem('theme') || 'dark';
-        this.onThemeChange(theme);
-
-        // Navigation arrows
-        document.getElementById('epub-prev').addEventListener('click', () => this.rendition.prev());
-        document.getElementById('epub-next').addEventListener('click', () => this.rendition.next());
-
-        // TOC
-        this.book.loaded.navigation.then(nav => {
-            const items = [];
-            const walk = (arr) => arr.forEach(item => {
-                items.push({ label: item.label?.trim() || item.href, dest: item.href });
-                if (item.subitems?.length) walk(item.subitems);
-            });
-            walk(nav.toc || []);
-            reader.renderTOC(items);
-        });
-
-        // Progress
-        this.book.ready.then(() => this.book.locations.generate(1200)).then(() => {
-            this.rendition.on('relocated', loc => {
-                const pct = this.book.locations.percentageFromCfi(loc.start.cfi) * 100;
-                reader.setProgress(pct);
-            });
-        });
+// --- Layout & Pagination ---
+function calculatePagination() {
+    const container = DOM.contentContainer;
+    if (isVerticalMode) {
+        totalPages = Math.ceil(container.scrollHeight / container.clientHeight) || 1;
+    } else {
+        totalPages = Math.ceil(container.scrollWidth / container.clientWidth) || 1;
     }
-
-    goTo(href) { this.rendition.display(href); }
-
-    onThemeChange(theme) {
-        const bg = theme === 'dark' ? '#1F1F1E' : '#efeeee';
-        const fg = theme === 'dark' ? '#ffffff' : '#000000';
-        this.rendition.themes.register('folio', {
-            body: { background: bg + ' !important', color: fg + ' !important' }
-        });
-        this.rendition.themes.select('folio');
-    }
-
-    onFontChange(size) {
-        this.rendition.themes.fontSize(`${size}px`);
-    }
+    
+    // Keep current page in bounds
+    if (currentPage > totalPages) currentPage = totalPages;
+    
+    updateProgressUI();
 }
 
-/* ══════════════════════════════════════════════════════════
-   PDF Engine — wraps pdf.js
-   ══════════════════════════════════════════════════════════ */
-class PDFEngine {
-    constructor(url, reader) {
-        if (!url) { showError('No file URL for PDF.'); return; }
-
-        this.reader  = reader;
-        this.doc     = null;
-        this.pageNum = 1;
-        this.scale   = 1.4;
-        this.rendering = false;
-        this.pending   = null;
-
-        this.canvas    = document.getElementById('pdf-canvas');
-        this.ctx       = this.canvas.getContext('2d');
-        this.textLayer = document.getElementById('pdf-text-layer');
-
-        document.getElementById('pdf-prev').addEventListener('click', () => this._prev());
-        document.getElementById('pdf-next').addEventListener('click', () => this._next());
-
-        pdfjsLib.getDocument(url).promise.then(pdf => {
-            this.doc = pdf;
-            document.getElementById('pdf-total').textContent = pdf.numPages;
-            this._render(1);
-            this._loadTOC();
-        }).catch(err => showError('PDF load error: ' + err.message));
+function goToPage(pageIndex) {
+    if (pageIndex < 1) pageIndex = 1;
+    if (pageIndex > totalPages) pageIndex = totalPages;
+    currentPage = pageIndex;
+    
+    const container = DOM.contentContainer;
+    
+    if (isVerticalMode) {
+        const clientHeight = container.clientHeight;
+        const maxScroll = container.scrollHeight - clientHeight;
+        let targetScroll = (currentPage - 1) * clientHeight;
+        targetScroll = Math.min(targetScroll, maxScroll);
+        container.scrollTo({ top: targetScroll, behavior: 'smooth' });
+    } else {
+        const clientWidth = container.clientWidth;
+        container.scrollTo({ left: (currentPage - 1) * clientWidth, behavior: 'smooth' });
     }
-
-    async _render(num) {
-        this.rendering = true;
-        const page = await this.doc.getPage(num);
-        const vp   = page.getViewport({ scale: this.scale });
-
-        this.canvas.width  = vp.width;
-        this.canvas.height = vp.height;
-
-        await page.render({ canvasContext: this.ctx, viewport: vp }).promise;
-
-        // Text layer
-        const tc = await page.getTextContent();
-        this.textLayer.innerHTML = '';
-        this.textLayer.style.width  = `${vp.width}px`;
-        this.textLayer.style.height = `${vp.height}px`;
-        pdfjsLib.renderTextLayer({
-            textContent: tc,
-            container:   this.textLayer,
-            viewport:    vp,
-            textDivs:    [],
-        });
-
-        this.rendering = false;
-        if (this.pending !== null) {
-            this._render(this.pending);
-            this.pending = null;
-        }
-
-        document.getElementById('pdf-cur').textContent = num;
-        this.reader.setProgress((num / this.doc.numPages) * 100);
-    }
-
-    _queue(num) {
-        if (this.rendering) { this.pending = num; }
-        else { this._render(num); }
-    }
-
-    _prev() { if (this.pageNum > 1)                    { this.pageNum--; this._queue(this.pageNum); } }
-    _next() { if (this.pageNum < this.doc.numPages)    { this.pageNum++; this._queue(this.pageNum); } }
-
-    async _loadTOC() {
-        const outline = await this.doc.getOutline();
-        if (outline) {
-            const items = outline.map(o => ({ label: o.title, dest: o.dest }));
-            this.reader.renderTOC(items);
-        }
-    }
-
-    goTo(dest) {
-        // dest is a ref array from pdf.js outline
-        if (!dest) return;
-        this.doc.getPageIndex(dest[0]).then(idx => {
-            this.pageNum = idx + 1;
-            this._queue(this.pageNum);
-        }).catch(() => {});
-    }
-
-    onFontChange(size) {
-        this.scale = size / 12;
-        this._queue(this.pageNum);
-    }
+    
+    updateProgressUI();
 }
 
-/* ══════════════════════════════════════════════════════════
-   Article Engine — raw_text from scrape
-   ══════════════════════════════════════════════════════════ */
-class ArticleEngine {
-    constructor(doc, reader) {
-        const container = document.getElementById('rdr-article-body');
-
-        // Guard: raw_text may be null / undefined
-        const rawText = doc.raw_text || doc.title || '';
-        const title   = doc.title   || 'Article';
-        const author  = doc.author  || '';
-        const src     = doc.source_url || '';
-
-        // Build HTML
-        let html = `<h1>${title}</h1>`;
-        if (author || src) {
-            html += `<div class="article-meta">`;
-            if (author) html += `<span>${author}</span>`;
-            if (author && src) html += ` · `;
-            if (src)    html += `<a href="${src}" target="_blank" rel="noopener">${src}</a>`;
-            html += `</div>`;
+DOM.contentContainer.addEventListener('scroll', () => {
+    const container = DOM.contentContainer;
+    if (isVerticalMode) {
+        const calculatedPage = Math.round(container.scrollTop / container.clientHeight) + 1;
+        if (calculatedPage !== currentPage && calculatedPage >= 1 && calculatedPage <= totalPages) {
+            currentPage = calculatedPage;
         }
-
-        if (!rawText.trim()) {
-            html += `<p style="color:var(--text-light);font-style:italic">No content available for this article.</p>`;
-        } else {
-            // Simple paragraph split on blank lines
-            const paras = rawText.split(/\n{2,}/).filter(p => p.trim());
-            paras.forEach(p => {
-                html += `<p>${p.replace(/\n/g, '<br>')}</p>`;
-            });
+        updateProgressUI();
+    } else {
+        const calculatedPage = Math.round(container.scrollLeft / container.clientWidth) + 1;
+        if (calculatedPage !== currentPage && calculatedPage >= 1 && calculatedPage <= totalPages) {
+            currentPage = calculatedPage;
+            updateProgressUI();
         }
-
-        container.innerHTML = html;
-
-        // Progress on scroll
-        const scrollEl = document.getElementById('rdr-article');
-        scrollEl.addEventListener('scroll', () => {
-            const max = scrollEl.scrollHeight - scrollEl.clientHeight;
-            if (max > 0) reader.setProgress((scrollEl.scrollTop / max) * 100);
-        });
     }
-
-    goTo() {}
-    onFontChange() {} // CSS var handles it
-    onThemeChange() {}
-}
-
-/* ── Boot ─────────────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', () => {
-    new ThemeManager();
-    window.universalReader = new UniversalReader();
 });
+
+function updateProgressUI() {
+    let pct = 0;
+    if (isVerticalMode) {
+        const { scrollTop, scrollHeight, clientHeight } = DOM.contentContainer;
+        pct = scrollHeight > clientHeight ? (scrollTop / (scrollHeight - clientHeight)) * 100 : 100;
+        DOM.statPages.textContent = "Scroll mode";
+    } else {
+        pct = totalPages > 1 ? ((currentPage - 1) / (totalPages - 1)) * 100 : 100;
+        const remaining = totalPages - currentPage;
+        DOM.statPages.textContent = `${remaining} pages left in book`;
+    }
+    
+    // Fixed bottom bar
+    DOM.fixedProgressFill.style.width = `${pct}%`;
+    DOM.statPercent.textContent = `${Math.round(pct)}%`;
+    
+    // Ribbon slider
+    DOM.ribbonProgress.value = pct;
+    
+    updateClock();
+}
+
+function updateClock() {
+    const is24h = localStorage.getItem('folio_reader_24h') === 'true';
+    const now = new Date();
+    let hours = now.getHours();
+    let mins = now.getMinutes().toString().padStart(2, '0');
+    let timeStr = '';
+    
+    if (is24h) {
+        timeStr = `${hours.toString().padStart(2, '0')}:${mins}`;
+    } else {
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        timeStr = `${hours}:${mins} ${ampm}`;
+    }
+    DOM.statTime.textContent = timeStr;
+}
+setInterval(updateClock, 60000);
+
+// Resize listener recalculates pagination
+window.addEventListener('resize', () => {
+    calculatePagination();
+    goToPage(currentPage);
+});
+
+// --- Ribbon Interaction (Hover to show) ---
+let ribbonTimeout;
+function showRibbons() {
+    DOM.topRibbon.classList.remove('hidden');
+    DOM.bottomRibbon.classList.remove('hidden');
+    
+    clearTimeout(ribbonTimeout);
+    ribbonTimeout = setTimeout(() => {
+        // Auto hide after 3 seconds if not interacting
+        hideRibbons();
+    }, 3000);
+}
+
+function hideRibbons() {
+    // Don't hide if settings or theme popup is open
+    if (!DOM.settingsModal.classList.contains('hidden') || !DOM.themeDropdown.classList.contains('hidden')) {
+        return;
+    }
+    DOM.topRibbon.classList.add('hidden');
+    DOM.bottomRibbon.classList.add('hidden');
+}
+
+document.addEventListener('mousemove', (e) => {
+    // Only show ribbons if hovering near top (60px) or bottom (60px)
+    if (e.clientY < 60 || e.clientY > window.innerHeight - 60) {
+        showRibbons();
+    }
+});
+document.addEventListener('click', showRibbons);
+
+[DOM.topRibbon, DOM.bottomRibbon].forEach(rib => {
+    rib.addEventListener('mouseenter', () => clearTimeout(ribbonTimeout));
+    rib.addEventListener('mouseleave', () => ribbonTimeout = setTimeout(hideRibbons, 2000));
+});
+
+// --- Sidebar Interaction ---
+let isSidebarOpen = true;
+
+function toggleSidebar() {
+    isSidebarOpen = !isSidebarOpen;
+    if (isSidebarOpen) {
+        DOM.sidebar.classList.add('docked');
+        document.body.classList.add('sidebar-open');
+        DOM.btnSidebarToggleTop.style.display = 'none'; // Hide from ribbon
+    } else {
+        DOM.sidebar.classList.remove('docked');
+        document.body.classList.remove('sidebar-open');
+        DOM.btnSidebarToggleTop.style.display = 'inline-flex'; // Show in ribbon
+    }
+    // Need to recalculate pages since width changed
+    setTimeout(() => {
+        calculatePagination();
+        goToPage(currentPage);
+    }, 350);
+}
+
+DOM.btnSidebarToggleTop.addEventListener('click', toggleSidebar);
+DOM.btnSidebarToggleSide.addEventListener('click', toggleSidebar);
+
+// Initialize sidebar state
+if (isSidebarOpen) {
+    document.body.classList.add('sidebar-open');
+    DOM.btnSidebarToggleTop.style.display = 'none';
+}
+
+// Sidebar Tabs
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.sidebar-list').forEach(l => l.classList.add('hidden'));
+        
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.target).classList.remove('hidden');
+    });
+});
+
+// --- Settings & Themes ---
+function loadSettings() {
+    // Theme
+    const savedTheme = localStorage.getItem('folio_reader_theme') || 'default';
+    document.body.setAttribute('data-theme', savedTheme);
+    
+    // Custom theme variables
+    if (savedTheme === 'custom') {
+        document.body.style.setProperty('--custom-bg', localStorage.getItem('folio_custom_bg') || '#1F1F1E');
+        document.body.style.setProperty('--custom-text', localStorage.getItem('folio_custom_text') || '#FFF');
+        document.body.style.setProperty('--custom-link', localStorage.getItem('folio_custom_link') || '#AFA9EC');
+    }
+
+    // Typography & Layout
+    const getS = (k, def) => localStorage.getItem('folio_reader_' + k) || def;
+    
+    document.getElementById('val-font-size').textContent = getS('fontsize', '18') + 'px';
+    document.getElementById('val-font-weight').textContent = getS('fontweight', '400');
+    document.getElementById('sel-font-face').value = getS('fontface', 'Lora');
+    
+    document.getElementById('val-pmargin').textContent = getS('pmargin', '1.2');
+    document.getElementById('val-lspace').textContent = getS('lspace', '1.6');
+    document.getElementById('val-tmargin').textContent = getS('tmargin', '60') + 'px';
+    document.getElementById('val-bmargin').textContent = getS('bmargin', '60') + 'px';
+    document.getElementById('val-lmargin').textContent = getS('lmargin', '80') + 'px';
+    document.getElementById('val-rmargin').textContent = getS('rmargin', '80') + 'px';
+    
+    document.getElementById('chk-24h').checked = getS('24h', 'false') === 'true';
+    
+    if (DOM.selReadingMode) DOM.selReadingMode.value = getS('mode', 'horizontal');
+    const savedWidth = getS('sidebar_width', '320px');
+    document.documentElement.style.setProperty('--sidebar-width', savedWidth);
+}
+
+function applySettingsToCSS() {
+    try {
+        const root = document.documentElement;
+        const getV = (id) => parseFloat(document.getElementById(id).textContent);
+        
+        root.style.setProperty('--u-font-size', getV('val-font-size') + 'px');
+        root.style.setProperty('--u-font-weight', getV('val-font-weight'));
+        
+        let fontFace = document.getElementById('sel-font-face').value;
+        root.style.setProperty('--u-font-family', `"${fontFace}", serif`);
+        
+        root.style.setProperty('--u-p-margin', getV('val-pmargin') + 'em');
+        root.style.setProperty('--u-line-height', getV('val-lspace'));
+        
+        root.style.setProperty('--u-t-margin', getV('val-tmargin') + 'px');
+        root.style.setProperty('--u-b-margin', getV('val-bmargin') + 'px');
+        root.style.setProperty('--u-l-margin', getV('val-lmargin') + 'px');
+        root.style.setProperty('--u-r-margin', getV('val-rmargin') + 'px');
+        
+        // Save to local storage
+        localStorage.setItem('folio_reader_fontsize', getV('val-font-size'));
+        localStorage.setItem('folio_reader_fontweight', getV('val-font-weight'));
+        localStorage.setItem('folio_reader_fontface', fontFace);
+        localStorage.setItem('folio_reader_pmargin', getV('val-pmargin'));
+        localStorage.setItem('folio_reader_lspace', getV('val-lspace'));
+        localStorage.setItem('folio_reader_tmargin', getV('val-tmargin'));
+        localStorage.setItem('folio_reader_bmargin', getV('val-bmargin'));
+        localStorage.setItem('folio_reader_lmargin', getV('val-lmargin'));
+        localStorage.setItem('folio_reader_rmargin', getV('val-rmargin'));
+        localStorage.setItem('folio_reader_24h', document.getElementById('chk-24h').checked);
+        
+        if (DOM.selReadingMode) {
+            const readingMode = DOM.selReadingMode.value;
+            if (readingMode === 'vertical') {
+                DOM.contentContainer.classList.add('vertical-mode');
+                isVerticalMode = true;
+            } else {
+                DOM.contentContainer.classList.remove('vertical-mode');
+                isVerticalMode = false;
+            }
+            localStorage.setItem('folio_reader_mode', readingMode);
+        }
+        
+        // Capture current relative progress
+        const pct = totalPages > 1 ? (currentPage - 1) / (totalPages - 1) : 0;
+        
+        // Recalculate pagination after a delay
+        setTimeout(() => {
+            calculatePagination();
+            const targetPage = Math.max(1, Math.min(totalPages, Math.round(pct * (totalPages - 1)) + 1));
+            goToPage(targetPage);
+        }, 100);
+    } catch(e) {
+        console.error("Error applying settings", e);
+    }
+}
+
+// Stepper setup helper
+function setupStepper(decBtnId, incBtnId, valId, step, min, max) {
+    const valSpan = document.getElementById(valId);
+    document.getElementById(decBtnId).addEventListener('click', () => {
+        let val = parseFloat(valSpan.textContent);
+        val = Math.max(min, val - step);
+        valSpan.textContent = step < 1 ? val.toFixed(1) : Math.round(val);
+        applySettingsToCSS();
+    });
+    document.getElementById(incBtnId).addEventListener('click', () => {
+        let val = parseFloat(valSpan.textContent);
+        val = Math.min(max, val + step);
+        valSpan.textContent = step < 1 ? val.toFixed(1) : Math.round(val);
+        applySettingsToCSS();
+    });
+}
+
+setupStepper('btn-font-dec', 'btn-font-inc', 'val-font-size', 1, 10, 48);
+setupStepper('btn-weight-dec', 'btn-weight-inc', 'val-font-weight', 100, 100, 900);
+document.getElementById('sel-font-face').addEventListener('change', applySettingsToCSS);
+
+setupStepper('btn-pmargin-dec', 'btn-pmargin-inc', 'val-pmargin', 0.1, 0, 4);
+setupStepper('btn-lspace-dec', 'btn-lspace-inc', 'val-lspace', 0.1, 1, 3);
+setupStepper('btn-tmargin-dec', 'btn-tmargin-inc', 'val-tmargin', 5, 0, 200);
+setupStepper('btn-bmargin-dec', 'btn-bmargin-inc', 'val-bmargin', 5, 0, 200);
+setupStepper('btn-lrmargin-dec', 'btn-lrmargin-inc', 'val-lmargin', 5, 0, 200);
+setupStepper('btn-rrmargin-dec', 'btn-rrmargin-inc', 'val-rmargin', 5, 0, 200);
+document.getElementById('chk-24h').addEventListener('change', () => {
+    applySettingsToCSS();
+    updateClock();
+});
+if (DOM.selReadingMode) {
+    DOM.selReadingMode.addEventListener('change', applySettingsToCSS);
+}
+
+// Modals
+DOM.btnSettings.addEventListener('click', (e) => {
+    e.stopPropagation();
+    DOM.settingsModal.classList.toggle('hidden');
+    DOM.themeDropdown.classList.add('hidden');
+});
+
+DOM.btnTheme.addEventListener('click', (e) => {
+    e.stopPropagation();
+    DOM.themeDropdown.classList.toggle('hidden');
+    DOM.settingsModal.classList.add('hidden');
+});
+
+document.addEventListener('click', (e) => {
+    if (!DOM.settingsModal.contains(e.target) && !DOM.btnSettings.contains(e.target)) {
+        DOM.settingsModal.classList.add('hidden');
+    }
+    if (!DOM.themeDropdown.contains(e.target) && !DOM.btnTheme.contains(e.target)) {
+        DOM.themeDropdown.classList.add('hidden');
+    }
+    if (DOM.aiUnderstandModal && !DOM.aiUnderstandModal.contains(e.target) && !DOM.btnAiUnderstand.contains(e.target)) {
+        DOM.aiUnderstandModal.classList.add('hidden');
+    }
+    if (DOM.bookDetailsModal && !DOM.bookDetailsModal.contains(e.target) && !DOM.btnSidebarInfo.contains(e.target)) {
+        DOM.bookDetailsModal.classList.add('hidden');
+    }
+});
+
+// Settings Tabs
+document.querySelectorAll('.settings-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.remove('hidden');
+    });
+});
+
+// Theme Selection
+document.querySelectorAll('.theme-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const theme = btn.dataset.theme;
+        if (theme === 'custom') {
+            DOM.customThemeModal.classList.remove('hidden');
+            DOM.themeDropdown.classList.add('hidden');
+        } else {
+            document.body.setAttribute('data-theme', theme);
+            localStorage.setItem('folio_reader_theme', theme);
+        }
+    });
+});
+
+document.getElementById('btn-close-custom-theme').addEventListener('click', () => {
+    DOM.customThemeModal.classList.add('hidden');
+});
+
+if (DOM.btnCloseAi) {
+    DOM.btnCloseAi.addEventListener('click', () => DOM.aiUnderstandModal.classList.add('hidden'));
+}
+if (DOM.btnCloseDetails) {
+    DOM.btnCloseDetails.addEventListener('click', () => DOM.bookDetailsModal.classList.add('hidden'));
+}
+
+if (DOM.btnSidebarInfo) {
+    DOM.btnSidebarInfo.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!contentData) return;
+        DOM.bookDetailsModal.classList.remove('hidden');
+        
+        let tagsHtml = '';
+        if (contentData.topics && contentData.topics.length) {
+            tagsHtml = '<div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">' + 
+                       contentData.topics.map(t => `<span style="background:var(--r-chrome-hover); padding:4px 8px; border-radius:4px; font-size:0.8rem;">${t}</span>`).join('') +
+                       '</div>';
+        }
+        
+        DOM.detailsText.innerHTML = `
+            <div style="display:flex; gap:16px; margin-bottom:16px;">
+                ${contentData.cover_image_url ? `<img src="${contentData.cover_image_url}" style="width:100px; height:150px; object-fit:cover; border-radius:4px;">` : ''}
+                <div>
+                    <h2 style="margin:0 0 8px; font-size:1.2rem;">${contentData.title}</h2>
+                    <h3 style="margin:0 0 12px; color:var(--text-secondary); font-size:0.95rem;">${contentData.author || 'Unknown'}</h3>
+                    <div style="font-size:0.85rem; color:var(--text-secondary);">Source: ${contentData.source_type || 'Uploaded'}</div>
+                    <div style="font-size:0.85rem; color:var(--text-secondary);">Added: ${new Date(contentData.created_at).toLocaleDateString()}</div>
+                </div>
+            </div>
+            <div style="line-height:1.5; font-size:0.95rem;">${contentData.summary || 'No summary available.'}</div>
+            ${tagsHtml}
+        `;
+    });
+}
+
+if (DOM.btnAiUnderstand) {
+    DOM.btnAiUnderstand.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!contentId) return;
+        
+        DOM.aiUnderstandModal.classList.remove('hidden');
+        DOM.aiUnderstandText.innerHTML = '<div style="display:flex; align-items:center; gap:8px;"><i data-lucide="loader" class="spin"></i> Requesting AI Analysis...</div>';
+        lucide.createIcons();
+        
+        try {
+            // First call understand route
+            const res = await api.post('/ai/understand', { content_id: contentId });
+            const jobId = res.request_id || res.job_id;
+            
+            if (jobId) {
+                DOM.aiUnderstandText.innerHTML = '<div style="display:flex; align-items:center; gap:8px;"><i data-lucide="loader" class="spin"></i> AI is thinking (Job ' + jobId + ')...</div>';
+                lucide.createIcons();
+                
+                const checkJob = async () => {
+                    try {
+                        const jobRes = await api.get('/ai/jobs/' + jobId);
+                        if (jobRes.status === 'completed') {
+                            const r = jobRes.result || {};
+                            let html = '';
+                            if (r.summary) {
+                                html += `<div style="margin-bottom:16px;">
+                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:6px;">Summary</div>
+                                    <div style="line-height:1.6;">${r.summary}</div>
+                                </div>`;
+                            }
+                            if (r.difficulty) {
+                                html += `<div style="margin-bottom:16px;">
+                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:6px;">Difficulty</div>
+                                    <span style="background:var(--r-chrome-hover); padding:3px 10px; border-radius:12px; font-size:0.85rem;">${r.difficulty}</span>
+                                </div>`;
+                            }
+                            if (r.key_concepts && r.key_concepts.length) {
+                                html += `<div style="margin-bottom:16px;">
+                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:8px;">Key Concepts</div>
+                                    <div style="display:flex; flex-wrap:wrap; gap:6px;">${r.key_concepts.map(c => `<span style="background:var(--r-chrome-hover); padding:3px 10px; border-radius:12px; font-size:0.82rem;">${c}</span>`).join('')}</div>
+                                </div>`;
+                            }
+                            if (r.topics && r.topics.length) {
+                                html += `<div style="margin-bottom:16px;">
+                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:8px;">Topics</div>
+                                    <div style="display:flex; flex-wrap:wrap; gap:6px;">${r.topics.map(t => `<span style="background:var(--r-chrome-hover); padding:3px 10px; border-radius:12px; font-size:0.82rem;">${t}</span>`).join('')}</div>
+                                </div>`;
+                            }
+                            if (r.category) {
+                                html += `<div>
+                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:6px;">Category</div>
+                                    <span style="background:var(--r-chrome-hover); padding:3px 10px; border-radius:12px; font-size:0.85rem;">${r.category}</span>
+                                </div>`;
+                            }
+                            DOM.aiUnderstandText.innerHTML = html || '<span style="color:var(--text-secondary)">No details returned.</span>';
+                        } else if (jobRes.status === 'failed') {
+                            DOM.aiUnderstandText.innerHTML = '<span style="color:#f56565">AI Analysis failed.</span>';
+                        } else {
+                            setTimeout(checkJob, 2000);
+                        }
+                    } catch (e) {
+                        DOM.aiUnderstandText.innerHTML = '<span style="color:#f56565">Error checking status: ' + e.message + '</span>';
+                    }
+                };
+                setTimeout(checkJob, 2000);
+            } else {
+                DOM.aiUnderstandText.innerHTML = res.message || JSON.stringify(res);
+            }
+        } catch (e) {
+            DOM.aiUnderstandText.innerHTML = '<span style="color:#f56565">Error: ' + e.message + '</span>';
+        }
+    });
+}
+
+document.getElementById('btn-save-theme').addEventListener('click', () => {
+    const bg = document.getElementById('color-bg').value;
+    const text = document.getElementById('color-text').value;
+    const link = document.getElementById('color-link').value;
+    
+    document.body.style.setProperty('--custom-bg', bg);
+    document.body.style.setProperty('--custom-text', text);
+    document.body.style.setProperty('--custom-link', link);
+    
+    document.body.setAttribute('data-theme', 'custom');
+    localStorage.setItem('folio_reader_theme', 'custom');
+    localStorage.setItem('folio_custom_bg', bg);
+    localStorage.setItem('folio_custom_text', text);
+    localStorage.setItem('folio_custom_link', link);
+    
+    DOM.customThemeModal.classList.add('hidden');
+});
+
+// Live preview custom theme
+['color-bg', 'color-text', 'color-link'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+        const prev = document.getElementById('theme-preview');
+        if (id === 'color-bg') prev.style.backgroundColor = document.getElementById(id).value;
+        if (id === 'color-text') prev.style.color = document.getElementById(id).value;
+        if (id === 'color-link') prev.querySelector('a').style.color = document.getElementById(id).value;
+    });
+});
+
+// --- Pagination Buttons ---
+DOM.btnPageFirst.addEventListener('click', () => goToPage(1));
+DOM.btnPagePrev.addEventListener('click', () => goToPage(currentPage - 1));
+DOM.btnPageNext.addEventListener('click', () => goToPage(currentPage + 1));
+DOM.btnPageLast.addEventListener('click', () => goToPage(totalPages));
+
+DOM.ribbonProgress.addEventListener('input', (e) => {
+    const pct = parseFloat(e.target.value);
+    const targetPage = Math.max(1, Math.round((pct / 100) * totalPages));
+    goToPage(targetPage);
+});
+
+// --- TOC / Bookmarks ---
+function renderTOC() {
+    DOM.listHyperlinks.innerHTML = '';
+    if (pseudoTOC.length === 0) {
+        DOM.listHyperlinks.innerHTML = '<div style="padding:20px; color:var(--text-light)">No chapters found.</div>';
+        return;
+    }
+    
+    pseudoTOC.forEach(toc => {
+        const item = document.createElement('div');
+        item.className = 'sidebar-item';
+        
+        // Find the page number by getting element offset
+        const el = document.getElementById(toc.id);
+        let pageNum = 1;
+        if (el) {
+            if (isVerticalMode) {
+                pageNum = Math.floor(el.offsetTop / DOM.contentContainer.clientHeight) + 1;
+            } else {
+                pageNum = Math.floor(el.offsetLeft / DOM.contentContainer.clientWidth) + 1;
+            }
+        }
+        
+        item.innerHTML = `
+            <div class="sidebar-item-label">${toc.label}</div>
+            <div class="sidebar-item-page">${pageNum}</div>
+        `;
+        item.addEventListener('click', () => {
+            goToPage(pageNum);
+            document.querySelectorAll('#list-hyperlinks .sidebar-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+        });
+        DOM.listHyperlinks.appendChild(item);
+    });
+}
+
+async function fetchAnnotationsAndBookmarks() {
+    try {
+        const res = await api.get(`/library/${libraryItemId}/bookmarks`);
+        const items = res.items || res || [];
+        
+        annotations = items.filter(i => ['highlight', 'underline', 'strikethrough'].includes(i.type));
+        bookmarks = items.filter(i => i.type === 'bookmark');
+        
+        renderAnnotations();
+        renderBookmarks();
+    } catch (e) {
+        console.error("Failed to fetch annotations/bookmarks:", e);
+    }
+}
+
+function renderAnnotations() {
+    DOM.listAnnotations.innerHTML = '';
+    if (annotations.length === 0) {
+        DOM.listAnnotations.innerHTML = '<div style="padding:20px; color:var(--text-light)">No annotations.</div>';
+        return;
+    }
+    
+    annotations.forEach(ann => {
+        const item = document.createElement('div');
+        item.className = 'annotation-item';
+        
+        // Truncate highlighted text
+        let text = ann.highlighted_text || 'No text';
+        const words = text.split(' ');
+        if (words.length > 15) text = words.slice(0, 15).join(' ') + '...';
+        
+        item.innerHTML = `
+            <div class="annotation-text">${text}</div>
+            <div class="annotation-actions">
+                <button class="btn-delete-annotation" title="Delete" data-id="${ann.id}">
+                    <i data-lucide="trash-2"></i>
+                </button>
+            </div>
+        `;
+        
+        // Jump to annotation logic
+        item.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-delete-annotation')) return;
+            // Fake jump since we don't have exact coordinates in this pseudo DOM
+            // We could parse ann.position if it's stored, e.g. "page: 5"
+            let pageNum = 1; 
+            if (ann.position && ann.position.startsWith('page:')) {
+                pageNum = parseInt(ann.position.split(':')[1]) || 1;
+            }
+            goToPage(pageNum);
+        });
+        
+        // Delete
+        item.querySelector('.btn-delete-annotation').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!confirm('Delete this annotation?')) return;
+            try {
+                await api.delete(`/bookmarks/${ann.id}`);
+                item.remove();
+            } catch (err) {}
+        });
+        
+        DOM.listAnnotations.appendChild(item);
+    });
+    lucide.createIcons();
+}
+
+function timeSince(dateString) {
+    const date = new Date(dateString);
+    const seconds = Math.floor((new Date() - date) / 1000);
+    
+    let interval = seconds / 31536000;
+    if (interval > 1) return Math.floor(interval) + " years ago";
+    interval = seconds / 2592000;
+    if (interval > 1) return Math.floor(interval) + " months ago";
+    interval = seconds / 86400;
+    if (interval > 1) return Math.floor(interval) + " days ago";
+    interval = seconds / 3600;
+    if (interval > 1) return Math.floor(interval) + " hours ago";
+    interval = seconds / 60;
+    if (interval > 1) return Math.floor(interval) + " minutes ago";
+    return "just now";
+}
+
+function renderBookmarks() {
+    DOM.listBookmarks.innerHTML = '';
+    if (bookmarks.length === 0) {
+        DOM.listBookmarks.innerHTML = '<div style="padding:20px; color:var(--text-light)">No bookmarks.</div>';
+        return;
+    }
+    
+    bookmarks.forEach(bm => {
+        const item = document.createElement('div');
+        item.className = 'sidebar-item';
+        
+        let pageNum = 1;
+        if (bm.position && bm.position.startsWith('page:')) {
+            pageNum = parseInt(bm.position.split(':')[1]) || 1;
+        }
+        
+        const relativeTime = timeSince(bm.created_at);
+        
+        item.innerHTML = `
+            <div class="sidebar-item-label">Page ${pageNum} &bull; <span style="font-size:0.8em; color:#a0aec0">${relativeTime}</span></div>
+            <div class="annotation-actions" style="opacity: 0;">
+                <button class="btn-delete-annotation" title="Delete" data-id="${bm.id}" style="color: #fc8181; background: none; border: none; cursor: pointer;">
+                    <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                </button>
+            </div>
+        `;
+        
+        item.addEventListener('mouseenter', () => { item.querySelector('.annotation-actions').style.opacity = '1'; });
+        item.addEventListener('mouseleave', () => { item.querySelector('.annotation-actions').style.opacity = '0'; });
+        
+        item.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-delete-annotation')) return;
+            goToPage(pageNum);
+        });
+        
+        item.querySelector('.btn-delete-annotation').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!confirm('Delete this bookmark?')) return;
+            try {
+                await api.delete(`/bookmarks/${bm.id}`);
+                item.remove();
+            } catch (err) {}
+        });
+        
+        DOM.listBookmarks.appendChild(item);
+    });
+    lucide.createIcons();
+}
+
+async function saveReadingSession() {
+    if (!libraryItemId || !sessionStartTime) return;
+    const duration = Math.floor((Date.now() - sessionStartTime) / 1000);
+    if (duration < 10) return; // Too short to record
+    
+    // Very naive word counting: assume 250 words per page
+    const words = Math.max(1, Math.floor(totalPages > 0 ? (contentData.word_count || 5000) * (1 / totalPages) : 0));
+    
+    const pct = totalPages > 1 ? ((currentPage - 1) / (totalPages - 1)) * 100 : 100;
+    
+    try {
+        await api.post('/reading/sessions', {
+            library_item_id: libraryItemId,
+            duration_sec: duration,
+            words_covered: words,
+            progress_pct: Math.min(100, Math.max(0, pct))
+        });
+    } catch(e) {
+        console.error("Failed to save reading session", e);
+    }
+}
+
+// --- Sidebar Resizer ---
+const sidebarResizer = document.getElementById('sidebar-resizer');
+let isSidebarResizing = false;
+
+sidebarResizer.addEventListener('mousedown', (e) => {
+    isSidebarResizing = true;
+    document.body.style.cursor = 'ew-resize';
+});
+document.addEventListener('mousemove', (e) => {
+    if (!isSidebarResizing) return;
+    const newWidth = Math.max(200, Math.min(e.clientX, window.innerWidth - 200));
+    document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
+});
+document.addEventListener('mouseup', () => {
+    if (isSidebarResizing) {
+        isSidebarResizing = false;
+        document.body.style.cursor = '';
+        localStorage.setItem('folio_sidebar_width', getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width').trim());
+        calculatePagination();
+        goToPage(currentPage);
+    }
+});
+
+// Start
+console.log("reader.js parsing complete. Calling initReader()...");
+try {
+    initReader().then(() => {
+        if (contentId) {
+            loadFutureSelfPrediction(contentId);
+        }
+    }).catch(e => console.error("Async error in initReader:", e));
+    console.log("Called initReader(). Calling lucide.createIcons()...");
+    lucide.createIcons();
+    setTimeout(() => lucide.createIcons(), 1000); // Try again after 1s just in case
+} catch (e) {
+    console.error("Error at startup:", e);
+    document.getElementById('error-toast').textContent = "Startup Error: " + e.message;
+    document.getElementById('error-toast').style.display = 'block';
+}
+
+async function loadFutureSelfPrediction(cid) {
+    const toast = document.getElementById('prediction-toast');
+    const textDiv = document.getElementById('prediction-text');
+    
+    // Don't show again if dismissed or previously shown for this session
+    if (sessionStorage.getItem('folio_predicted_' + cid)) return;
+
+    try {
+        const res = await api.post('/ai/predict-read', { content_id: cid });
+        const jobId = res.request_id;
+        
+        let attempts = 0;
+        let result = null;
+        while (attempts < 20) {
+            await new Promise(r => setTimeout(r, 2000));
+            const jobRes = await api.get(`/ai/jobs/${jobId}`);
+            if (jobRes.status === 'completed') { result = jobRes.result; break; }
+            if (jobRes.status === 'failed') break;
+            attempts++;
+        }
+        
+        if (result && result.prediction) {
+            textDiv.textContent = result.prediction;
+            toast.style.display = 'block';
+            
+            // Fade in
+            setTimeout(() => { toast.style.opacity = '1'; }, 100);
+            
+            sessionStorage.setItem('folio_predicted_' + cid, 'true');
+            
+            // Auto hide after 8 seconds
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => { toast.style.display = 'none'; }, 500);
+            }, 8000);
+        }
+    } catch (e) {
+        console.error("Failed to load prediction", e);
+    }
+}

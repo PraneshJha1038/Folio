@@ -26,6 +26,8 @@ class Visibility(str, Enum):
 class BookmarkType(str, Enum):
     bookmark = "bookmark"
     highlight = "highlight"
+    underline = "underline"
+    strikethrough = "strikethrough"
 
 class ReportStatus(str, Enum):
     open = "open"
@@ -107,9 +109,22 @@ class ContentSourceResponse(BaseModel):
     word_count: int | None
     visibility: Visibility
     summary: str | None = None
+    category: str | None = None
     difficulty: str | None = None
     key_concepts: list | None = None
+    roi_score: float | None = None
+    worth_reading_cache: dict | None = None
+    time_sensitivity: str | None = None
     ai_processed: bool = False
+    publisher: str | None = None
+    language: str | None = None
+    page_count: int | None = None
+    isbn: str | None = None
+    description: str | None = None
+    tags: list | None = None
+    series: str | None = None
+    file_size_bytes: int | None = None
+    format: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -120,6 +135,15 @@ class ContentSourceUpdate(BaseModel):
     author: str | None = None
     cover_image_url: str | None = None
     visibility: Visibility | None = None
+    description: str | None = None
+    tags: list | None = None
+    category: str | None = None
+    publisher: str | None = None
+    language: str | None = None
+    page_count: int | None = None
+    isbn: str | None = None
+    series: str | None = None
+    format: str | None = None
 
 # 3. ContentGenre schemas
 class ContentGenreCreate(BaseModel):
@@ -187,6 +211,8 @@ class LibraryItemResponse(BaseModel):
     current_position: str | None
     is_finished: bool
     finished_at: datetime | None
+    is_favorite: bool = False
+    progress_percent: float | None = 0.0
     content_source: ContentSourceResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -194,6 +220,7 @@ class LibraryItemResponse(BaseModel):
 class LibraryItemUpdate(BaseModel):
     current_position: str | None = None
     is_finished: bool | None = None
+    is_favorite: bool | None = None
 
 # 7. ShelfItem schemas
 class ShelfItemCreate(BaseModel):
@@ -232,6 +259,8 @@ class BookmarkHighlightCreate(BaseModel):
     position: str = Field(max_length=255)
     highlighted_text: str | None = None
     note: str | None = None
+    label: str | None = None
+    color: str | None = "yellow"
 
 class BookmarkHighlightResponse(BaseModel):
     id: int
@@ -240,6 +269,8 @@ class BookmarkHighlightResponse(BaseModel):
     position: str
     highlighted_text: str | None
     note: str | None
+    label: str | None
+    color: str | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

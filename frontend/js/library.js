@@ -88,6 +88,27 @@ document.addEventListener('DOMContentLoaded', () => {
         loadShelves();
     });
 
+    document.getElementById('btn-insights').addEventListener('click', () => {
+        window.location.href = 'insights.html';
+    });
+
+    document.getElementById('btn-optimize').addEventListener('click', () => {
+        openModal('optimize-modal');
+    });
+
+    const morePopover = document.getElementById('more-popover');
+    document.getElementById('btn-more-options').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = morePopover.classList.contains('open');
+        document.querySelectorAll('.lib-add-popover').forEach(p => p.classList.remove('open'));
+        if (!isOpen) morePopover.classList.add('open');
+    });
+
+    document.getElementById('pop-bankruptcy').addEventListener('click', () => {
+        morePopover.classList.remove('open');
+        openBankruptcyModal();
+    });
+
     // Popover rows
     document.getElementById('pop-from-device').addEventListener('click', () => {
         addPopover.classList.remove('open');
@@ -408,13 +429,34 @@ document.addEventListener('DOMContentLoaded', () => {
             window.location.href = `reader.html?id=${cs.id}`;
         });
 
-        // Progress
-        let progressPct = 0;
-        if (item.is_finished) progressPct = 100;
+        // Decay Badge
+        let decayBadgeHtml = '';
+        if (item.decay_percent !== undefined) {
+            let decayTier = 'fresh';
+            let decayLabel = 'Fresh';
+            if (item.decay_percent >= 20 && item.decay_percent < 60) { decayTier = 'aging'; decayLabel = 'Aging'; }
+            else if (item.decay_percent >= 60) { decayTier = 'stale'; decayLabel = 'Stale'; }
+            
+            decayBadgeHtml = `<div class="lib-badge-decay ${decayTier}" title="${esc(cs.time_sensitivity || '')}">
+                <div class="decay-dot"></div>${decayLabel}
+            </div>`;
+        }
 
+        const progressPct = Math.round(item.progress_percent || 0);
+        
         const statusHtml = item.is_finished
-            ? `<span class="lib-badge-finished">Finished</span>`
-            : `<span>${progressPct}%</span>`;
+            ? `<span class="lib-badge-finished">Finished</span>${decayBadgeHtml}`
+            : `<span>${progressPct}%</span>${decayBadgeHtml}`;
+
+        // Tags
+        let tagsHtml = '';
+        if (cs.tags && Array.isArray(cs.tags) && cs.tags.length > 0) {
+            tagsHtml = '<div class="lib-card-tags">';
+            cs.tags.slice(0, 3).forEach(tag => {
+                tagsHtml += `<span class="lib-card-tag">${esc(tag)}</span>`;
+            });
+            tagsHtml += '</div>';
+        }
 
         card.innerHTML = `
             <div class="lib-card-cover">
@@ -432,6 +474,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
                     </svg>
                 </button>
+                <button class="lib-card-extra-btn btn-worth-it" title="Is it worth it?" tabindex="-1" style="bottom: 54px; right: 8px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                </button>
                 <button class="lib-card-extra-btn btn-add-shelf" title="Add to Shelf" tabindex="-1" data-lib-item-id="${item.id}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
                 </button>
@@ -447,6 +492,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="lib-card-body">
                 <div class="lib-card-title" title="${esc(cs.title)}">${esc(cs.title)}</div>
+                ${tagsHtml}
                 <div class="lib-card-status">${statusHtml}</div>
             </div>
         `;
@@ -454,6 +500,11 @@ document.addEventListener('DOMContentLoaded', () => {
         card.querySelector('.lib-card-info-btn').addEventListener('click', e => {
             e.stopPropagation();
             openDetailsModal(cs, item);
+        });
+
+        card.querySelector('.btn-worth-it').addEventListener('click', e => {
+            e.stopPropagation();
+            openWorthItModal(item);
         });
 
         const extraBtn = card.querySelector('.btn-add-shelf');
@@ -570,10 +621,97 @@ document.addEventListener('DOMContentLoaded', () => {
         return card;
     }
 
+    // ─── Worth It Modal ───────────────────────────────────────────────────
+    async function openWorthItModal(item) {
+        const modal = document.getElementById('worth-it-modal');
+        const contentDiv = document.getElementById('worth-it-content');
+        
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+        
+        contentDiv.innerHTML = `
+            <div class="lib-loading-container">
+                <div class="lib-spinner"></div>
+                <span id="worth-it-loading-text">Requesting analysis...</span>
+            </div>
+        `;
+        
+        try {
+            // 1. Trigger the background job
+            const res = await api.post('/ai/worth-reading', { content_id: item.content_id });
+            const jobId = res.request_id;
+            
+            document.getElementById('worth-it-loading-text').textContent = 'Analyzing article (this may take a moment)...';
+            
+            // 2. Poll for completion
+            let result = null;
+            let attempts = 0;
+            while (true) {
+                await new Promise(r => setTimeout(r, 2000)); // Poll every 2s
+                const jobRes = await api.get(`/ai/jobs/${jobId}`);
+                
+                if (jobRes.status === 'completed') {
+                    result = jobRes.result;
+                    break;
+                } else if (jobRes.status === 'failed') {
+                    throw new Error('Analysis failed.');
+                }
+                attempts++;
+            }
+            
+            if (!result) throw new Error('Analysis timed out.');
+            
+            // 3. Render results
+            let takeawaysHtml = '';
+            if (result.key_takeaways && result.key_takeaways.length > 0) {
+                takeawaysHtml = '<ul style="margin: 4px 0 12px 20px; font-size: 0.9rem; color: var(--text-secondary);">';
+                result.key_takeaways.forEach(t => {
+                    takeawaysHtml += `<li>${esc(t)}</li>`;
+                });
+                takeawaysHtml += '</ul>';
+            }
+            
+            contentDiv.innerHTML = `
+                <div style="margin-bottom: 16px;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Main Idea</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.4;">${esc(result.main_idea || 'N/A')}</div>
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Key Takeaways</div>
+                    ${takeawaysHtml}
+                </div>
+                
+                <div style="display: flex; gap: 16px; margin-top: 16px;">
+                    <div style="flex: 1; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 8px; padding: 12px;">
+                        <div style="font-weight: 600; color: #22c55e; margin-bottom: 4px; font-size: 0.85rem; text-transform: uppercase;">Who should read</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">${esc(result.who_should_read || '-')}</div>
+                    </div>
+                    <div style="flex: 1; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; padding: 12px;">
+                        <div style="font-weight: 600; color: #ef4444; margin-bottom: 4px; font-size: 0.85rem; text-transform: uppercase;">Who should skip</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">${esc(result.who_should_skip || '-')}</div>
+                    </div>
+                </div>
+            `;
+            
+        } catch (error) {
+            console.error("AI Worth It Error:", error);
+            contentDiv.innerHTML = `
+                <div style="color: #ef4444; padding: 16px; text-align: center;">
+                    Failed to get analysis: ${esc(error.message)}
+                </div>
+            `;
+        }
+    }
+
     // ─── Book Details Modal ───────────────────────────────────────────────
     function openDetailsModal(cs, libItem) {
         currentDetailContent = cs;
         currentDetailLibItem = libItem;
+
+        // Reset
+        document.getElementById('btn-worth-it').style.display = (cs.type === 'article' ? '' : 'none');
+        document.getElementById('btn-worth-it').onclick = () => openWorthItModal(cs);
 
         // Cover
         const coverImg = document.getElementById('detail-cover-img');
@@ -649,7 +787,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cell.className = 'lib-meta-cell';
 
             // Format label (e.g. file_size_bytes -> File Size Bytes, or custom)
-            let label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            let label = key.replace(/_/g, ' ').replace(/bw/g, l => l.toUpperCase());
             let displayValue = value;
 
             if (key === 'file_size_bytes') {
@@ -890,4 +1028,192 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─── Bootstrap ────────────────────────────────────────────────────────
     updateSearchPlaceholder(0);
     loadLocalLibrary();
-});
+
+    // ─── Guilt Banner ────────────────────────────────────────────────────
+    async function loadGuiltBanner() {
+        const banner = document.getElementById('guilt-banner');
+        const textSpan = document.getElementById('guilt-banner-text');
+        const btnClose = document.getElementById('btn-close-guilt');
+        
+        if (localStorage.getItem('folio_guilt_dismissed')) return;
+
+        try {
+            const res = await api.post('/ai/guilt', { threshold_days: 30 });
+            const jobId = res.request_id;
+            
+            let result = null;
+            while (true) {
+                await new Promise(r => setTimeout(r, 2000));
+                const jobRes = await api.get(`/ai/jobs/${jobId}`);
+                if (jobRes.status === 'completed') { result = jobRes.result; break; }
+                if (jobRes.status === 'failed') break;
+            }
+            
+            if (result && result.prompt) {
+                banner.style.display = 'flex';
+                textSpan.textContent = result.prompt;
+            }
+        } catch (e) {
+            console.error("AI Guilt Banner Error:", e);
+        }
+
+        btnClose.addEventListener('click', () => {
+            banner.style.display = 'none';
+            localStorage.setItem('folio_guilt_dismissed', 'true');
+        });
+    }
+    loadGuiltBanner();
+
+    // ─── Queue Optimizer Modal ───────────────────────────────────────────
+    document.getElementById('btn-do-optimize').addEventListener('click', async () => {
+        const minutes = parseInt(document.getElementById('optimize-minutes').value) || 30;
+        const inputView = document.getElementById('optimize-input-view');
+        const loadingView = document.getElementById('optimize-loading-view');
+        const resultsView = document.getElementById('optimize-results-view');
+        
+        inputView.style.display = 'none';
+        resultsView.style.display = 'none';
+        loadingView.style.display = 'block';
+        
+        try {
+            const res = await api.post('/ai/queue/optimize', { available_minutes: minutes });
+            
+            loadingView.style.display = 'none';
+            resultsView.style.display = 'block';
+            
+            const queueList = document.getElementById('optimize-queue-list');
+            queueList.innerHTML = '';
+            if (res.queue && res.queue.length > 0) {
+                res.queue.forEach(item => {
+                    const el = document.createElement('div');
+                    el.style.border = '1px solid var(--lib-border)';
+                    el.style.borderRadius = '8px';
+                    el.style.padding = '8px 12px';
+                    el.style.cursor = 'pointer';
+                    el.innerHTML = `
+                        <div style="font-weight: 600; color: var(--text-primary); display:flex; justify-content:space-between;">
+                            <span>${esc(item.title)}</span>
+                            <span style="color:var(--text-light); font-weight:normal; font-size: 0.8rem;">${Math.round(item.reading_time_minutes)}m</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">${esc(item.reason)}</div>
+                    `;
+                    el.addEventListener('click', () => window.location.href = `reader.html?id=${item.id}`);
+                    queueList.appendChild(el);
+                });
+            } else {
+                queueList.innerHTML = '<div style="color:var(--text-light); font-size:0.9rem;">No suitable articles found.</div>';
+            }
+            
+            const skippedList = document.getElementById('optimize-skipped-list');
+            skippedList.innerHTML = '';
+            if (res.skipped && res.skipped.length > 0) {
+                res.skipped.forEach(item => {
+                    const el = document.createElement('div');
+                    el.style.fontSize = '0.8rem';
+                    el.innerHTML = `<span style="color:var(--text-primary);">Item #${item.id}</span>: ${esc(item.reason)}`;
+                    skippedList.appendChild(el);
+                });
+            }
+            
+        } catch (e) {
+            console.error("AI Optimizer Error:", e);
+            loadingView.style.display = 'none';
+            inputView.style.display = 'block';
+            toast('Failed to optimize queue: ' + e.message);
+        }
+    });
+
+    // Reset optimize modal on close
+    document.querySelector('[data-close="optimize-modal"]').addEventListener('click', () => {
+        document.getElementById('optimize-input-view').style.display = 'block';
+        document.getElementById('optimize-loading-view').style.display = 'none';
+        document.getElementById('optimize-results-view').style.display = 'none';
+    });
+
+    // ─── Backlog Bankruptcy Modal ─────────────────────────────────────────
+    let bankruptcyResult = null;
+
+    async function openBankruptcyModal() {
+        openModal('bankruptcy-modal');
+        
+        const loadingView = document.getElementById('bankruptcy-loading-view');
+        const resultsView = document.getElementById('bankruptcy-results-view');
+        
+        loadingView.style.display = 'block';
+        resultsView.style.display = 'none';
+        
+        try {
+            const res = await api.post('/ai/bankruptcy', {});
+            const jobId = res.request_id;
+            
+            let attempts = 0;
+            let result = null;
+            while (true) {
+                await new Promise(r => setTimeout(r, 2000));
+                const jobRes = await api.get(`/ai/jobs/${jobId}`);
+                if (jobRes.status === 'completed') { result = jobRes.result; break; }
+                if (jobRes.status === 'failed') throw new Error('Analysis failed.');
+                attempts++;
+            }
+            if (!result) throw new Error('Analysis timed out.');
+            
+            bankruptcyResult = result;
+            loadingView.style.display = 'none';
+            resultsView.style.display = 'block';
+            
+            document.getElementById('bankruptcy-summary').textContent = result.summary || '';
+            
+            const renderList = (containerId, items) => {
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                if (!items || items.length === 0) {
+                    container.innerHTML = '<div style="color:var(--text-light); font-size:0.85rem;">None</div>';
+                    return;
+                }
+                items.forEach(it => {
+                    container.innerHTML += `
+                        <div style="background: var(--bg-hover); padding: 8px; border-radius: 6px;">
+                            <div style="font-weight: 500; font-size: 0.85rem; color: var(--text-primary); margin-bottom: 2px;">${esc(it.title)}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary);">${esc(it.reason)}</div>
+                        </div>
+                    `;
+                });
+            };
+            
+            renderList('bankruptcy-keep-list', result.keep);
+            
+            // result.remove is an object {outdated:[], low_roi:[], redundant:[], topic_mismatch:[]}
+            // Flatten all sub-arrays into one list
+            const removeFlat = result.remove && typeof result.remove === 'object' && !Array.isArray(result.remove)
+                ? Object.values(result.remove).flat()
+                : (Array.isArray(result.remove) ? result.remove : []);
+            renderList('bankruptcy-remove-list', removeFlat);
+            // Store flattened remove list so confirm-delete works correctly
+            bankruptcyResult._removeFlat = removeFlat;
+            
+        } catch (e) {
+            console.error("AI Bankruptcy Error:", e);
+            closeModal('bankruptcy-modal');
+            toast('Bankruptcy analysis failed: ' + e.message);
+        }
+    }
+
+    document.getElementById('btn-confirm-bankruptcy').addEventListener('click', async () => {
+        if (!bankruptcyResult) return;
+        
+        const removeList = bankruptcyResult._removeFlat || [];
+        const idsToRemove = removeList.map(r => r.id || r.article_id).filter(Boolean);
+        if (idsToRemove.length === 0) { closeModal('bankruptcy-modal'); return; }
+        
+        for (const id of idsToRemove) {
+            try {
+                await api.delete(`/library/${id}`);
+            } catch (e) { console.error('Failed to remove item', id); }
+        }
+        
+        closeModal('bankruptcy-modal');
+        loadLocalLibrary();
+    });
+
+}); // end DOMContentLoaded
+

@@ -1,0 +1,207 @@
+/* Insights Page Styles */
+
+.insights-main {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem;
+    font-family: 'IBM Plex Serif', serif;
+}
+
+.insights-header {
+    margin-bottom: 3rem;
+}
+
+.insights-header h1 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 2rem;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.insights-section {
+    margin-bottom: 4rem;
+}
+
+.insights-section-title {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 1.25rem;
+    color: var(--text-primary);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Heatmap */
+.heatmap-insight {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    font-style: italic;
+}
+
+.heatmap-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.heatmap-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.heatmap-row:hover {
+    background: var(--bg-hover);
+}
+
+.heatmap-label {
+    width: 150px;
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.heatmap-bar-container {
+    flex: 1;
+    height: 12px;
+    background: var(--lib-border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.heatmap-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 6px;
+}
+
+.heatmap-trend {
+    width: 24px;
+    display: flex;
+    justify-content: center;
+    color: var(--text-light);
+}
+
+/* Graveyard */
+.graveyard-stats {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 2rem;
+}
+
+.graveyard-stat-card {
+    flex: 1;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 24px;
+    border: 1px solid var(--lib-border);
+}
+
+.graveyard-stat-val {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.graveyard-stat-label {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    color: var(--text-light);
+    letter-spacing: 0.05em;
+}
+
+.graveyard-insights {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 2rem 0;
+}
+
+.graveyard-insights li {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.graveyard-insights li::before {
+    content: "•";
+    color: #ef4444;
+    font-weight: bold;
+}
+
+.graveyard-recommendation {
+    background: rgba(239, 68, 68, 0.1);
+    border-left: 4px solid #ef4444;
+    padding: 16px 24px;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    font-style: italic;
+    border-radius: 4px;
+}
+
+/* Recommendations */
+.recs-scroll-container {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    padding-bottom: 16px;
+    scroll-snap-type: x mandatory;
+}
+
+.recs-scroll-container::-webkit-scrollbar {
+    height: 8px;
+}
+
+.recs-scroll-container::-webkit-scrollbar-thumb {
+    background: var(--lib-border);
+    border-radius: 4px;
+}
+
+.recs-card {
+    min-width: 250px;
+    scroll-snap-align: start;
+}
+
+.explore-card {
+    min-width: 250px;
+    border: 2px dashed var(--accent);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+    color: var(--accent);
+    cursor: pointer;
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.explore-card svg {
+    margin-bottom: 12px;
+}
+
+.explore-title {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.explore-desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}

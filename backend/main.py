@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -9,6 +9,7 @@ from router.library import router as library_router
 from router.reading import router as reading_router
 from router.suggestions import router as suggestions_router
 from router.ai_features import router as ai_router
+from router.profile import router as profile_router
 
 app = FastAPI(
     title="folio API",
@@ -33,6 +34,7 @@ app.include_router(library_router)
 app.include_router(reading_router)
 app.include_router(suggestions_router)
 app.include_router(ai_router)
+app.include_router(profile_router)
 
 @app.get("/")
 async def hello():
@@ -56,3 +58,4 @@ async def check_health():
             'Status': "Unsuccessful",
             'Error': str(e)
         }
+

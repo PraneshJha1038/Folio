@@ -72,6 +72,15 @@ class ContentSource(Base):
     ai_processed: Mapped[bool] = mapped_column(Boolean, default=False)
     word_count: Mapped[int | None] = mapped_column(Integer)
     visibility: Mapped[str] = mapped_column(String(10), default="local")
+    publisher: Mapped[str | None] = mapped_column(String(255))
+    language: Mapped[str | None] = mapped_column(String(50))
+    page_count: Mapped[int | None] = mapped_column(Integer)
+    isbn: Mapped[str | None] = mapped_column(String(20))
+    description: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[list | None] = mapped_column(JSONB)
+    series: Mapped[str | None] = mapped_column(String(255))
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer)
+    format: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
 
@@ -148,6 +157,9 @@ class LibraryItem(Base):
     finished_at: Mapped[object | None] = mapped_column(TIMESTAMP(timezone=True))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[object | None] = mapped_column(TIMESTAMP(timezone=True))
+    is_favorite: Mapped[bool] = mapped_column(Boolean, default=False)
+    decay_percent: Mapped[float | None] = mapped_column(Float, default=0.0)
+    progress_percent: Mapped[float | None] = mapped_column(Float, default=0.0)
     
     content_source: Mapped["ContentSource"] = relationship("ContentSource")
     __table_args__ = (
@@ -194,10 +206,12 @@ class BookmarkHighlight(Base):
     position: Mapped[str] = mapped_column(String(255))
     highlighted_text: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)
+    label: Mapped[str | None] = mapped_column(String(100))
+    color: Mapped[str | None] = mapped_column(String(50), default='yellow')
     created_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        CheckConstraint("type IN ('bookmark', 'highlight')", name="check_bookmark_type"),
+        CheckConstraint("type IN ('bookmark', 'highlight', 'underline', 'strikethrough')", name="check_bookmark_type"),
         Index("idx_bookmarks_highlights_library_item", "library_item_id"),
     )
 
