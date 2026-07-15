@@ -1,4 +1,4 @@
-const API_BASE = 'https://folio-76919f83.fastapicloud.dev';
+const API_BASE = 'https://folio-xfsu.onrender.com';
 
 class ApiClient {
     constructor(baseUrl) {

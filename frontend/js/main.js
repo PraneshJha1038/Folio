@@ -62,7 +62,7 @@ class AuthManager {
         const password = document.getElementById('signin-password').value;
 
         try {
-            const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/login`, {
+            const response = await fetch(`https://folio-xfsu.onrender.com/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
@@ -90,7 +90,7 @@ class AuthManager {
 
         if (!this.isOtpSent) {
             try {
-                const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/send-otp`, {
+                const response = await fetch(`https://folio-xfsu.onrender.com/auth/send-otp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, email, password })
@@ -111,7 +111,7 @@ class AuthManager {
         } else {
             const otp = this.signupOtpInput.value;
             try {
-                const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/verify-otp`, {
+                const response = await fetch(`https://folio-xfsu.onrender.com/auth/verify-otp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, email, password, otp })
@@ -130,7 +130,7 @@ class AuthManager {
         const userNumberEl = document.getElementById('user-number');
         if (!userNumberEl) return;
         try {
-            const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/users/count`);
+            const response = await fetch(`https://folio-xfsu.onrender.com/auth/users/count`);
             const data = await response.json();
             if (response.ok) {
                 userNumberEl.textContent = `${data.count}\n`;
@@ -146,7 +146,7 @@ class AuthManager {
         const itemNumberEl = document.getElementById('books-uploaded');
         if(!itemNumberEl) return;
         try {
-            const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/users/items`);
+            const response = await fetch(`https://folio-xfsu.onrender.com/auth/users/items`);
             const data = await response.json();
             if (response.ok) {
                 itemNumberEl.textContent = data.count;
