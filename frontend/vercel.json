@@ -1,5 +1,4 @@
 {
-  "cleanUrls": true,
   "rewrites": [
     { "source": "/", "destination": "/HTML/index.html" },
     { "source": "/library", "destination": "/HTML/library.html" },
