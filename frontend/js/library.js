@@ -2,7 +2,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!localStorage.getItem('access_token')) {
-        window.location.href = 'index.html';
+        window.location.href = '/';
         return;
     }
 
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('btn-insights').addEventListener('click', () => {
-        window.location.href = 'insights.html';
+        window.location.href = '/insights';
     });
 
     document.getElementById('btn-optimize').addEventListener('click', () => {
@@ -426,7 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Open reader on card click (not on info btn click)
         card.addEventListener('click', e => {
             if (e.target.closest('.lib-card-info-btn')) return;
-            window.location.href = `reader.html?id=${cs.id}`;
+            window.location.href = `/reader?id=${cs.id}`;
         });
 
         // Decay Badge
@@ -1097,7 +1097,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">${esc(item.reason)}</div>
                     `;
-                    el.addEventListener('click', () => window.location.href = `reader.html?id=${item.id}`);
+                    el.addEventListener('click', () => window.location.href = `/reader?id=${item.id}`);
                     queueList.appendChild(el);
                 });
             } else {

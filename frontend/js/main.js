@@ -62,7 +62,7 @@ class AuthManager {
         const password = document.getElementById('signin-password').value;
 
         try {
-            const response = await fetch(`http://127.0.0.1:8000/auth/login`, {
+            const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
@@ -70,7 +70,7 @@ class AuthManager {
             const data = await response.json();
             if (!response.ok) throw new Error(data.detail || 'Login failed');
             localStorage.setItem('access_token', data.access_token);
-            window.location.href = 'library.html';
+            window.location.href = '/library';
         } catch (error) {
             showError(error.message);
         }
@@ -90,7 +90,7 @@ class AuthManager {
 
         if (!this.isOtpSent) {
             try {
-                const response = await fetch(`http://127.0.0.1:8000/auth/send-otp`, {
+                const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/send-otp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, email, password })
@@ -111,7 +111,7 @@ class AuthManager {
         } else {
             const otp = this.signupOtpInput.value;
             try {
-                const response = await fetch(`http://127.0.0.1:8000/auth/verify-otp`, {
+                const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/verify-otp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, email, password, otp })
@@ -119,7 +119,7 @@ class AuthManager {
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.detail || 'Sign up failed');
                 localStorage.setItem('access_token', data.access_token);
-                window.location.href = 'library.html';
+                window.location.href = '/library';
             } catch (error) {
                 showError(error.message);
             }
@@ -130,7 +130,7 @@ class AuthManager {
         const userNumberEl = document.getElementById('user-number');
         if (!userNumberEl) return;
         try {
-            const response = await fetch(`http://127.0.0.1:8000/auth/users/count`);
+            const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/users/count`);
             const data = await response.json();
             if (response.ok) {
                 userNumberEl.textContent = `${data.count}\n`;
@@ -146,7 +146,7 @@ class AuthManager {
         const itemNumberEl = document.getElementById('books-uploaded');
         if(!itemNumberEl) return;
         try {
-            const response = await fetch(`http://127.0.0.1:8000/auth/users/items`);
+            const response = await fetch(`https://folio-76919f83.fastapicloud.dev/auth/users/items`);
             const data = await response.json();
             if (response.ok) {
                 itemNumberEl.textContent = data.count;

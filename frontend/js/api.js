@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = 'https://folio-76919f83.fastapicloud.dev';
 
 class ApiClient {
     constructor(baseUrl) {
@@ -32,7 +32,7 @@ class ApiClient {
 
             if (response.status === 401) {
                 localStorage.removeItem('access_token');
-                window.location.href = 'index.html';
+                window.location.href = '/';
                 throw new Error('Unauthorized');
             }
 

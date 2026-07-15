@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Topbar
     document.getElementById('btn-home').addEventListener('click', () => {
-        window.location.href = 'library.html';
+        window.location.href = '/library';
     });
 
     const body = document.documentElement;
@@ -173,7 +173,7 @@ function renderRecommendations(data) {
             const card = document.createElement('div');
             card.className = 'lib-card recs-card';
             card.innerHTML = `
-                <div class="lib-card-cover" style="cursor:pointer;" onclick="window.location.href='reader.html?id=${item.content_id}'">
+                <div class="lib-card-cover" style="cursor:pointer;" onclick="window.location.href='/reader?id=${item.content_id}'">
                     <div class="lib-card-cover-placeholder">
                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
@@ -234,7 +234,7 @@ async function openLearningPath(topic) {
                 el.style.borderRadius = '8px';
                 
                 const artHtml = step.article_id 
-                    ? `<button class="lib-primary-btn" style="padding: 4px 12px; font-size: 0.8rem; margin-top: 8px;" onclick="window.location.href='reader.html?id=${step.article_id}'">Read "${esc(step.article_title)}"</button>`
+                    ? `<button class="lib-primary-btn" style="padding: 4px 12px; font-size: 0.8rem; margin-top: 8px;" onclick="window.location.href='/reader?id=${step.article_id}'">Read "${esc(step.article_title)}"</button>`
                     : `<div style="font-size: 0.8rem; color: var(--text-light); margin-top: 8px;">Find an article about: "${esc(step.article_title)}"</div>`;
 
                 el.innerHTML = `

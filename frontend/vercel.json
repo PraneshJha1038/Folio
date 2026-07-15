@@ -1,0 +1,10 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/HTML/index.html" },
+    { "source": "/library", "destination": "/HTML/library.html" },
+    { "source": "/reader", "destination": "/HTML/reader.html" },
+    { "source": "/insights", "destination": "/HTML/insights.html" },
+    { "source": "/profile", "destination": "/HTML/profile.html" }
+  ]
+}

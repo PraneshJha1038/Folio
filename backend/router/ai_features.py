@@ -22,7 +22,7 @@ async def call_ai_service(endpoint: str, payload: dict) -> dict | None:
     if the call failed for any reason (connection error, non-2xx).
     Callers are responsible for falling back to their own logic on None.
     """
-    AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:3001")
+    AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "https://kvzphlzwtbuuxshfyefy.supabase.co/functions/v1/analyze")
     try:
         async with httpx.AsyncClient(timeout=None) as client:
             response = await client.post(f"{AI_SERVICE_URL}{endpoint}", json=payload)

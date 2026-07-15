@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     if (!localStorage.getItem('access_token')) {
-        window.location.href = 'index.html';
+        window.location.href = '/';
         return;
     }
 
@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('logout-btn').addEventListener('click', (e) => {
         e.preventDefault();
         localStorage.removeItem('access_token');
-        window.location.href = 'index.html';
+        window.location.href = '/';
     });
 
     async function loadProfile() {
