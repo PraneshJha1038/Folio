@@ -54,6 +54,35 @@ class AuthManager {
         }
         this.fetchUserCount();
         this.fetchItemCount();
+        this.checkSession();
+    }
+
+    async checkSession() {
+        const token = localStorage.getItem('access_token');
+        if (!token) return;
+
+        const loadingEl = document.getElementById('auth-loading');
+        if (loadingEl) loadingEl.style.display = 'flex';
+        if (this.signinForm) this.signinForm.style.display = 'none';
+        if (this.signupForm) this.signupForm.style.display = 'none';
+
+        try {
+            const response = await fetch(`https://folio-xfsu.onrender.com/auth/users/me`, {
+                method: 'GET',
+                headers: { 
+                    'Authorization': `Bearer ${token}` 
+                }
+            });
+            if (response.ok) {
+                window.location.href = '/library';
+            } else {
+                throw new Error('Session invalid');
+            }
+        } catch (error) {
+            localStorage.removeItem('access_token');
+            if (loadingEl) loadingEl.style.display = 'none';
+            if (this.signinForm) this.signinForm.style.display = '';
+        }
     }
 
     async handleSignIn(e) {

@@ -20,7 +20,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours — generous for a hackathon demo
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
 
 
 def create_access_token(user_id: int) -> str:

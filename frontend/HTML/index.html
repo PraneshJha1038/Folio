@@ -102,6 +102,11 @@
                         <p>Sign in to your library.</p>
                     </div>
                     
+                    <div id="auth-loading" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px;">
+                        <div class="lib-spinner" style="margin-bottom: 16px;"></div>
+                        <p style="color: var(--text-secondary); font-size: 0.95rem;">Checking session...</p>
+                    </div>
+                    
                     <form id="signin-form" class="auth-form active">
                         <div class="form-group">
                             <label for="signin-email">Email</label>

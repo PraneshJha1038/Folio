@@ -32,7 +32,10 @@ class ApiClient {
 
             if (response.status === 401) {
                 localStorage.removeItem('access_token');
-                window.location.href = '/';
+                const path = window.location.pathname;
+                if (path !== '/' && path !== '/index.html') {
+                    window.location.href = '/';
+                }
                 throw new Error('Unauthorized');
             }
 
