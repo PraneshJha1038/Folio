@@ -125,6 +125,7 @@ class ContentSourceResponse(BaseModel):
     series: str | None = None
     file_size_bytes: int | None = None
     format: str | None = None
+    toc: list | None = None
     created_at: datetime
     updated_at: datetime
 

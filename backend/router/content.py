@@ -65,7 +65,7 @@ async def upload_content(
     if content_type == ContentType.epub:
         cover_image_url = extract_epub_cover_and_upload(file_content)
 
-    raw_text = extract_uploaded_text(file_content, content_type.value)
+    raw_text, toc = extract_uploaded_text(file_content, content_type.value)
     word_count = len(raw_text.split()) if raw_text else 5000
     
     db_title = title if title else os.path.splitext(filename)[0]
@@ -79,6 +79,7 @@ async def upload_content(
         file_path=file_url,
         cover_image_url=cover_image_url,
         raw_text=raw_text,
+        toc=toc,
         word_count=word_count,
         visibility=visibility.value
     )

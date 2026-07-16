@@ -152,8 +152,27 @@ function renderContent() {
     
     if (isHtml) {
         DOM.contentContainer.innerHTML = rawText;
-        
-        // Scan for headings to populate TOC
+    } else {
+        // Plain text parsing
+        const paragraphs = rawText.split('\n\n').filter(p => p.trim());
+        let html = '';
+        paragraphs.forEach((p, index) => {
+            if (/^chapter\s+\d+/i.test(p.trim()) || /^part\s+\d+/i.test(p.trim())) {
+                html += `<h2 id="chap-${index}">${p.trim()}</h2>`;
+            } else {
+                html += `<p>${p.trim()}</p>`;
+            }
+        });
+        DOM.contentContainer.innerHTML = html;
+    }
+
+    // Populate Table of Contents (TOC)
+    if (contentData.toc && Array.isArray(contentData.toc) && contentData.toc.length > 0) {
+        pseudoTOC = contentData.toc;
+        console.log("Loaded structured TOC from database:", pseudoTOC);
+    } else if (isHtml) {
+        // Scan for headings to populate TOC (fallback for books without stored TOC)
+        console.warn("No structured TOC found in database. Falling back to heading scan.");
         const headings = DOM.contentContainer.querySelectorAll('h1, h2, h3, h4, .pdf-outline');
         headings.forEach((h, index) => {
             if (!h.id) {
@@ -165,18 +184,14 @@ function renderContent() {
             }
         });
     } else {
-        // Plain text parsing
-        const paragraphs = rawText.split('\n\n').filter(p => p.trim());
-        let html = '';
-        paragraphs.forEach((p, index) => {
-            if (/^chapter\s+\d+/i.test(p.trim()) || /^part\s+\d+/i.test(p.trim())) {
-                html += `<h2 id="chap-${index}">${p.trim()}</h2>`;
-                pseudoTOC.push({ label: p.trim(), id: `chap-${index}` });
-            } else {
-                html += `<p>${p.trim()}</p>`;
+        // Plain text chapter scanning fallback
+        const headings = DOM.contentContainer.querySelectorAll('h2');
+        headings.forEach((h) => {
+            const label = h.textContent.trim();
+            if (label) {
+                pseudoTOC.push({ label: label, id: h.id });
             }
         });
-        DOM.contentContainer.innerHTML = html;
     }
     
     // Need a slight delay to allow CSS multi-column to calculate layout
@@ -782,30 +797,36 @@ function renderTOC() {
     }
     
     pseudoTOC.forEach(toc => {
-        const item = document.createElement('div');
-        item.className = 'sidebar-item';
-        
-        // Find the page number by getting element offset
-        const el = document.getElementById(toc.id);
-        let pageNum = 1;
-        if (el) {
-            if (isVerticalMode) {
-                pageNum = Math.floor(el.offsetTop / DOM.contentContainer.clientHeight) + 1;
+        try {
+            const item = document.createElement('div');
+            item.className = 'sidebar-item';
+            
+            // Find the page number by getting element offset
+            const el = document.getElementById(toc.id);
+            let pageNum = 1;
+            if (el) {
+                if (isVerticalMode) {
+                    pageNum = Math.floor(el.offsetTop / DOM.contentContainer.clientHeight) + 1;
+                } else {
+                    pageNum = Math.floor(el.offsetLeft / DOM.contentContainer.clientWidth) + 1;
+                }
             } else {
-                pageNum = Math.floor(el.offsetLeft / DOM.contentContainer.clientWidth) + 1;
+                console.error(`ERROR: TOC target element not found in DOM for id "${toc.id}" (Label: "${toc.label}")`);
             }
+            
+            item.innerHTML = `
+                <div class="sidebar-item-label">${toc.label}</div>
+                <div class="sidebar-item-page">${pageNum}</div>
+            `;
+            item.addEventListener('click', () => {
+                goToPage(pageNum);
+                document.querySelectorAll('#list-hyperlinks .sidebar-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+            });
+            DOM.listHyperlinks.appendChild(item);
+        } catch (err) {
+            console.error(`ERROR: Failed to render TOC item:`, toc, err);
         }
-        
-        item.innerHTML = `
-            <div class="sidebar-item-label">${toc.label}</div>
-            <div class="sidebar-item-page">${pageNum}</div>
-        `;
-        item.addEventListener('click', () => {
-            goToPage(pageNum);
-            document.querySelectorAll('#list-hyperlinks .sidebar-item').forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
-        });
-        DOM.listHyperlinks.appendChild(item);
     });
 }
 

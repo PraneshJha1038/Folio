@@ -81,6 +81,7 @@ class ContentSource(Base):
     series: Mapped[str | None] = mapped_column(String(255))
     file_size_bytes: Mapped[int | None] = mapped_column(Integer)
     format: Mapped[str | None] = mapped_column(String(50))
+    toc: Mapped[list | None] = mapped_column(JSONB)
     created_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at: Mapped[object] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
 

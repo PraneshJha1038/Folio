@@ -130,22 +130,24 @@ def extract_text_from_pdf(file_content: bytes) -> str | None:
 
 
 
-def extract_text_from_epub(file_content: bytes) -> str | None:
+def extract_text_from_epub(file_content: bytes) -> tuple[str | None, list | None]:
     """
     Extract readable HTML structured content from EPUB chapters using BeautifulSoup.
+    Also extracts the Table of Contents (TOC) from EPUB 3 nav or EPUB 2 NCX.
     """
     try:
         from bs4 import BeautifulSoup
     except ImportError:
         print("WARNING: BeautifulSoup (beautifulsoup4) is not installed!")
-        return None
+        return None, None
 
     try:
         with zipfile.ZipFile(io.BytesIO(file_content)) as archive:
             try:
                 container_xml = archive.read("META-INF/container.xml")
-            except KeyError:
-                return None
+            except KeyError as e:
+                print(f"ERROR: META-INF/container.xml not found in EPUB: {e}")
+                return None, None
 
             container_tree = ET.fromstring(container_xml)
             rootfile_path = None
@@ -155,7 +157,8 @@ def extract_text_from_epub(file_content: bytes) -> str | None:
                     break
 
             if not rootfile_path:
-                return None
+                print("ERROR: rootfile path not found in container.xml")
+                return None, None
 
             opf_bytes = archive.read(rootfile_path)
             opf_tree = ET.fromstring(opf_bytes)
@@ -165,18 +168,29 @@ def extract_text_from_epub(file_content: bytes) -> str | None:
             spine = []
             opf_dir = posixpath.dirname(rootfile_path)
 
+            nav_href = None
+            ncx_href = None
+
             for element in opf_tree.iter():
                 tag = namespace_free(element.tag)
                 if tag == "item":
                     item_id = element.attrib.get("id")
                     href = element.attrib.get("href")
+                    properties = element.attrib.get("properties") or ""
+                    media_type = element.attrib.get("media-type") or ""
                     if item_id and href:
                         manifest[item_id] = href
+                    if "nav" in properties.split():
+                        nav_href = href
+                    elif media_type == "application/x-dtbncx+xml" or item_id == "ncx":
+                        ncx_href = href
                 elif tag == "itemref":
                     idref = element.attrib.get("idref")
                     if idref:
                         spine.append(idref)
 
+            # Build mapping from chapter file path in zip to its href
+            chapter_paths_map = {}
             chapter_texts = []
             for item_id in spine:
                 href = manifest.get(item_id)
@@ -185,9 +199,12 @@ def extract_text_from_epub(file_content: bytes) -> str | None:
 
                 href = unquote(href)
                 chapter_path = posixpath.join(opf_dir, href) if opf_dir else href
+                chapter_paths_map[posixpath.normpath(chapter_path)] = href
+
                 try:
                     chapter_bytes = archive.read(chapter_path)
-                except KeyError:
+                except KeyError as e:
+                    print(f"WARNING: Spine chapter {chapter_path} not found in zip archive: {e}")
                     continue
 
                 try:
@@ -266,18 +283,103 @@ def extract_text_from_epub(file_content: bytes) -> str | None:
                     continue
 
             text = "\n\n".join(chapter_texts).strip()
-            return text or None
+
+            # Parse Table of Contents (TOC)
+            toc_entries = []
+
+            # 1. Try EPUB 3 Nav
+            if nav_href:
+                try:
+                    nav_path = posixpath.join(opf_dir, unquote(nav_href)) if opf_dir else unquote(nav_href)
+                    nav_bytes = archive.read(nav_path)
+                    nav_soup = BeautifulSoup(nav_bytes, "html.parser")
+                    nav_elem = nav_soup.find("nav")
+                    if nav_elem:
+                        a_tags = nav_elem.find_all("a", href=True)
+                        nav_dir = posixpath.dirname(nav_path)
+                        for a in a_tags:
+                            label = a.get_text(strip=True)
+                            href_val = unquote(a["href"])
+                            if "#" in href_val:
+                                file_part, anchor_part = href_val.split("#", 1)
+                            else:
+                                file_part, anchor_part = href_val, None
+                                
+                            target_file_path = posixpath.normpath(posixpath.join(nav_dir, file_part))
+                            matched_href = chapter_paths_map.get(target_file_path)
+                            if matched_href:
+                                chapter_id = matched_href.replace("/", "_").replace(".", "_")
+                                target_id = f"{chapter_id}_{anchor_part}" if anchor_part else f"{chapter_id}_start"
+                                toc_entries.append({
+                                    "label": label,
+                                    "target_file": file_part,
+                                    "target_anchor": anchor_part,
+                                    "id": target_id
+                                })
+                except Exception as e:
+                    print(f"ERROR: Failed to parse EPUB 3 Nav document: {e}")
+
+            # 2. Fallback to EPUB 2 NCX
+            if not toc_entries and ncx_href:
+                try:
+                    ncx_path = posixpath.join(opf_dir, unquote(ncx_href)) if opf_dir else unquote(ncx_href)
+                    ncx_bytes = archive.read(ncx_path)
+                    ncx_tree = ET.fromstring(ncx_bytes)
+                    
+                    root_tag = ncx_tree.tag
+                    ns = ""
+                    if '}' in root_tag:
+                        ns = root_tag.split('}')[0] + '}'
+                        
+                    ncx_dir = posixpath.dirname(ncx_path)
+                    
+                    for elem in ncx_tree.iter():
+                        tag_name = namespace_free(elem.tag)
+                        if tag_name == 'navPoint':
+                            label = ""
+                            label_elem = elem.find(f'{ns}navLabel')
+                            if label_elem is not None:
+                                text_elem = label_elem.find(f'{ns}text')
+                                if text_elem is not None:
+                                    label = text_elem.text or ""
+                                    
+                            src = ""
+                            content_elem = elem.find(f'{ns}content')
+                            if content_elem is not None:
+                                src = unquote(content_elem.attrib.get('src', ''))
+                                
+                            if src:
+                                if "#" in src:
+                                    file_part, anchor_part = src.split("#", 1)
+                                else:
+                                    file_part, anchor_part = src, None
+                                    
+                                target_file_path = posixpath.normpath(posixpath.join(ncx_dir, file_part))
+                                matched_href = chapter_paths_map.get(target_file_path)
+                                if matched_href:
+                                    chapter_id = matched_href.replace("/", "_").replace(".", "_")
+                                    target_id = f"{chapter_id}_{anchor_part}" if anchor_part else f"{chapter_id}_start"
+                                    toc_entries.append({
+                                        "label": label,
+                                        "target_file": file_part,
+                                        "target_anchor": anchor_part,
+                                        "id": target_id
+                                    })
+                except Exception as e:
+                    print(f"ERROR: Failed to parse EPUB 2 NCX document: {e}")
+
+            return text or None, toc_entries or None
     except Exception as e:
-        print(f"Failed to extract EPUB text: {e}")
-        return None
+        print(f"ERROR: Failed to extract EPUB text: {e}")
+        return None, None
 
 
-def extract_uploaded_text(file_content: bytes, file_type: str) -> str | None:
+def extract_uploaded_text(file_content: bytes, file_type: str) -> tuple[str | None, list | None]:
     if file_type == "pdf":
-        return extract_text_from_pdf(file_content)
+        return extract_text_from_pdf(file_content), None
     if file_type == "epub":
         return extract_text_from_epub(file_content)
-    return None
+    return None, None
 
 def extract_epub_cover_and_upload(file_content: bytes) -> str | None:
     """
