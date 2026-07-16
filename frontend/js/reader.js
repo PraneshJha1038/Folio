@@ -649,7 +649,7 @@ if (DOM.btnAiUnderstand) {
                                     const explanation = (typeof c === 'object' && c !== null) ? (c.explanation || c.description || '') : '';
                                     const sl = label.replace(/"/g, '&quot;');
                                     const se = explanation.replace(/"/g, '&quot;');
-                                    return `<span class="concept-tag" data-concept="${sl}" data-explanation="${se}"><span class="concept-tag-label">${label}</span><span class="concept-tag-arrow">↑</span></span>`;
+                                    return `<span class="concept-tag" data-concept="${sl}" data-explanation="${se}"><span class="concept-tag-label">${label}</span><span class="concept-tag-arrow"><i data-lucide="arrow-right" style="width:14px;height:14px;"></i></span></span>`;
                                 }).join('');
                                 html += `<div style="margin-bottom:16px;">
                                     <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary);margin-bottom:8px;">Key Concepts</div>
@@ -675,6 +675,7 @@ if (DOM.btnAiUnderstand) {
 
                             // ── Render once, then wire listeners ─────────────
                             DOM.aiUnderstandText.innerHTML = html || '<span style="color:var(--text-secondary)">No details returned.</span>';
+                            lucide.createIcons({ root: DOM.aiUnderstandText });
 
                             let activePopup = null;
                             const closePopup = () => {
@@ -957,7 +958,7 @@ async function saveReadingSession() {
             duration_sec: duration,
             words_covered: words,
             progress_pct: Math.min(100, Math.max(0, pct))
-        });
+        }, { keepalive: true });
     } catch(e) {
         console.error("Failed to save reading session", e);
     }

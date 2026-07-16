@@ -74,11 +74,12 @@ class ApiClient {
         return this._request(endpoint, { method: 'GET' });
     }
 
-    async post(endpoint, body) {
+    async post(endpoint, body, customOptions = {}) {
         const isFormData = body instanceof FormData;
         return this._request(endpoint, {
             method: 'POST',
-            body: isFormData ? body : JSON.stringify(body)
+            body: isFormData ? body : JSON.stringify(body),
+            ...customOptions
         });
     }
 
