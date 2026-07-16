@@ -58,6 +58,11 @@ class AuthManager {
     }
 
     async checkSession() {
+        // Only run on the login/index page — other pages handle their own auth
+        const path = window.location.pathname;
+        const isLoginPage = path === '/' || path === '/index.html' || path.endsWith('/HTML/index.html');
+        if (!isLoginPage) return;
+
         const token = localStorage.getItem('access_token');
         if (!token) return;
 
