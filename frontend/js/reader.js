@@ -609,37 +609,110 @@ if (DOM.btnAiUnderstand) {
                         if (jobRes.status === 'completed') {
                             const r = jobRes.result || {};
                             let html = '';
+
+                            // ── Summary ──────────────────────────────────────
                             if (r.summary) {
                                 html += `<div style="margin-bottom:16px;">
-                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:6px;">Summary</div>
+                                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary);margin-bottom:6px;">Summary</div>
                                     <div style="line-height:1.6;">${r.summary}</div>
                                 </div>`;
                             }
+
+                            // ── Difficulty ───────────────────────────────────
                             if (r.difficulty) {
                                 html += `<div style="margin-bottom:16px;">
-                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:6px;">Difficulty</div>
-                                    <span style="background:var(--r-chrome-hover); padding:3px 10px; border-radius:12px; font-size:0.85rem;">${r.difficulty}</span>
+                                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary);margin-bottom:6px;">Difficulty</div>
+                                    <span style="background:var(--r-chrome-hover);padding:3px 10px;border-radius:12px;font-size:0.85rem;">${r.difficulty}</span>
                                 </div>`;
                             }
+
+                            // ── Key Concepts (interactive tags) ──────────────
                             if (r.key_concepts && r.key_concepts.length) {
+                                if (!document.getElementById('concept-tag-style')) {
+                                    const s = document.createElement('style');
+                                    s.id = 'concept-tag-style';
+                                    s.textContent = `
+                                        .concept-tag{position:relative;display:inline-flex;align-items:center;justify-content:center;background:var(--r-chrome-hover);padding:4px 12px;border-radius:14px;font-size:0.82rem;cursor:pointer;border:1px solid transparent;transition:border-color .18s;user-select:none;overflow:hidden;}
+                                        .concept-tag:hover{border-color:var(--accent);}
+                                        .concept-tag-label{transition:filter .18s,opacity .18s;}
+                                        .concept-tag:hover .concept-tag-label{filter:blur(3px);opacity:.35;}
+                                        .concept-tag-arrow{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;color:var(--accent);font-size:1rem;}
+                                        .concept-tag:hover .concept-tag-arrow{opacity:1;}
+                                        .concept-popup{position:fixed;z-index:9999;background:var(--bg-secondary,#1a1a2e);border:1px solid var(--accent);border-radius:10px;padding:14px 16px;width:280px;box-shadow:0 8px 32px rgba(0,0,0,.35);font-size:0.83rem;line-height:1.55;color:var(--text-primary);pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;}
+                                        .concept-popup.visible{opacity:1;transform:translateY(0);pointer-events:auto;}
+                                        .concept-popup-title{font-weight:600;margin-bottom:6px;color:var(--text-primary);font-size:0.85rem;}
+                                    `;
+                                    document.head.appendChild(s);
+                                }
+                                const tagsHtml = r.key_concepts.map(c => {
+                                    const label = (typeof c === 'object' && c !== null) ? (c.concept || c.name || '') : String(c);
+                                    const explanation = (typeof c === 'object' && c !== null) ? (c.explanation || c.description || '') : '';
+                                    const sl = label.replace(/"/g, '&quot;');
+                                    const se = explanation.replace(/"/g, '&quot;');
+                                    return `<span class="concept-tag" data-concept="${sl}" data-explanation="${se}"><span class="concept-tag-label">${label}</span><span class="concept-tag-arrow">↑</span></span>`;
+                                }).join('');
                                 html += `<div style="margin-bottom:16px;">
-                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:8px;">Key Concepts</div>
-                                    <div style="display:flex; flex-wrap:wrap; gap:6px;">${r.key_concepts.map(c => `<span style="background:var(--r-chrome-hover); padding:3px 10px; border-radius:12px; font-size:0.82rem;">${c}</span>`).join('')}</div>
+                                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary);margin-bottom:8px;">Key Concepts</div>
+                                    <div style="display:flex;flex-wrap:wrap;gap:8px;">${tagsHtml}</div>
                                 </div>`;
                             }
+
+                            // ── Topics ───────────────────────────────────────
                             if (r.topics && r.topics.length) {
                                 html += `<div style="margin-bottom:16px;">
-                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:8px;">Topics</div>
-                                    <div style="display:flex; flex-wrap:wrap; gap:6px;">${r.topics.map(t => `<span style="background:var(--r-chrome-hover); padding:3px 10px; border-radius:12px; font-size:0.82rem;">${t}</span>`).join('')}</div>
+                                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary);margin-bottom:8px;">Topics</div>
+                                    <div style="display:flex;flex-wrap:wrap;gap:6px;">${r.topics.map(t => `<span style="background:var(--r-chrome-hover);padding:3px 10px;border-radius:12px;font-size:0.82rem;">${t}</span>`).join('')}</div>
                                 </div>`;
                             }
+
+                            // ── Category ─────────────────────────────────────
                             if (r.category) {
                                 html += `<div>
-                                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:6px;">Category</div>
-                                    <span style="background:var(--r-chrome-hover); padding:3px 10px; border-radius:12px; font-size:0.85rem;">${r.category}</span>
+                                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary);margin-bottom:6px;">Category</div>
+                                    <span style="background:var(--r-chrome-hover);padding:3px 10px;border-radius:12px;font-size:0.85rem;">${r.category}</span>
                                 </div>`;
                             }
+
+                            // ── Render once, then wire listeners ─────────────
                             DOM.aiUnderstandText.innerHTML = html || '<span style="color:var(--text-secondary)">No details returned.</span>';
+
+                            let activePopup = null;
+                            const closePopup = () => {
+                                if (activePopup) {
+                                    activePopup.classList.remove('visible');
+                                    setTimeout(() => { if (activePopup) { activePopup.remove(); activePopup = null; } }, 160);
+                                }
+                            };
+                            DOM.aiUnderstandText.querySelectorAll('.concept-tag').forEach(tag => {
+                                tag.addEventListener('click', e => {
+                                    e.stopPropagation();
+                                    const concept = tag.dataset.concept;
+                                    const explanation = tag.dataset.explanation;
+                                    if (!explanation) return;
+                                    if (activePopup && activePopup.dataset.for === concept) { closePopup(); return; }
+                                    closePopup();
+
+                                    const popup = document.createElement('div');
+                                    popup.className = 'concept-popup';
+                                    popup.dataset.for = concept;
+                                    popup.innerHTML = `<div class="concept-popup-title">${concept}</div><div>${explanation}</div>`;
+                                    document.body.appendChild(popup);
+                                    activePopup = popup;
+
+                                    const rect = tag.getBoundingClientRect();
+                                    const popupW = 280;
+                                    let left = rect.left + rect.width / 2 - popupW / 2;
+                                    left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
+                                    popup.style.left = left + 'px';
+                                    popup.style.top = '-9999px';
+                                    requestAnimationFrame(() => {
+                                        const top = Math.max(8, rect.top - popup.offsetHeight - 10);
+                                        popup.style.top = top + 'px';
+                                        popup.classList.add('visible');
+                                    });
+                                });
+                            });
+                            document.addEventListener('click', closePopup);
                         } else if (jobRes.status === 'failed') {
                             DOM.aiUnderstandText.innerHTML = '<span style="color:#f56565">AI Analysis failed.</span>';
                         } else {
