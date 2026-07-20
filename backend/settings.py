@@ -20,6 +20,6 @@ class MailSettings(BaseSettings):
     MAIL_SSL_TLS: bool = os.getenv("MAIL_SSL_TLS", "False").lower() == "true"
     USE_CREDENTIALS: bool = True
     VALIDATE_CERTS: bool = True
-
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
 
 mail_settings = MailSettings()

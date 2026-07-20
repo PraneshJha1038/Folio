@@ -1,6 +1,6 @@
 import logging
-from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
-from pydantic import EmailStr,SecretStr
+import httpx
+from pydantic import EmailStr
 from settings import mail_settings
 
 logger = logging.getLogger("email_service")
@@ -20,33 +20,32 @@ async def send_otp_email(email: EmailStr, otp: str):
     </html>
     """
 
-    message = MessageSchema(
-        subject=subject,
-        recipients=[email],
-        body=body,
-        subtype=MessageType.html
-    )
-
     try:
-        if not mail_settings.MAIL_USERNAME or not mail_settings.MAIL_PASSWORD:
-            raise ValueError("Mail configuration is incomplete")
+        if not mail_settings.RESEND_API_KEY:
+            raise ValueError("Resend API key is missing")
 
-        conf = ConnectionConfig(
-            MAIL_USERNAME=mail_settings.MAIL_USERNAME,
-            MAIL_PASSWORD=mail_settings.MAIL_PASSWORD,
-            MAIL_FROM=mail_settings.MAIL_FROM,
-            MAIL_PORT=mail_settings.MAIL_PORT,
-            MAIL_SERVER=mail_settings.MAIL_SERVER,
-            MAIL_FROM_NAME="Folio App",
-            MAIL_STARTTLS=mail_settings.MAIL_STARTTLS,
-            MAIL_SSL_TLS=mail_settings.MAIL_SSL_TLS,
-            USE_CREDENTIALS=mail_settings.USE_CREDENTIALS,
-            VALIDATE_CERTS=mail_settings.VALIDATE_CERTS
-        )
+        headers = {
+            "Authorization": f"Bearer {mail_settings.RESEND_API_KEY}",
+            "Content-Type": "application/json"
+        }
         
-        fm = FastMail(conf)
-        await fm.send_message(message)
-        logger.info(f"OTP email sent successfully to {email}")
+        payload = {
+            "from": "Folio <onboarding@resend.dev>",
+            "to": [email],
+            "subject": subject,
+            "html": body
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post("https://api.resend.com/emails", json=payload, headers=headers)
+            
+            # Log the full error from Resend if it fails (often due to unverified domain/email)
+            if response.status_code >= 400:
+                raise ValueError(f"Resend API error: {response.text}")
+                
+            response.raise_for_status()
+            
+        logger.info(f"OTP email sent successfully to {email} via Resend")
     except Exception as e:
         logger.warning(f"Failed to send email to {email}: {e}. Falling back to mock email.")
         print(f"\n========================================\n[FALLBACK MOCK EMAIL] TO: {email}\nOTP CODE: {otp}\n========================================\n")
