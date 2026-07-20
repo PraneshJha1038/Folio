@@ -44,13 +44,10 @@ async def send_otp_email(email: EmailStr, otp: str):
             VALIDATE_CERTS=mail_settings.VALIDATE_CERTS
         )
         
-        # Hack to bypass fastapi-mail / pydantic v2 mismatch
-        from pydantic import SecretStr
-        conf.__dict__["MAIL_PASSWORD"] = SecretStr(mail_settings.MAIL_PASSWORD)
-
         fm = FastMail(conf)
         await fm.send_message(message)
         logger.info(f"OTP email sent successfully to {email}")
     except Exception as e:
         logger.warning(f"Failed to send email to {email}: {e}. Falling back to mock email.")
         print(f"\n========================================\n[FALLBACK MOCK EMAIL] TO: {email}\nOTP CODE: {otp}\n========================================\n")
+        raise e

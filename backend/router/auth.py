@@ -74,11 +74,14 @@ async def send_otp(body: SendOtpRequest, db: AsyncSession = Depends(get_db)):
         
     await db.commit()
     
-    # 4. Email it (Background Task or directly, since we can wait or do it sync)
-    # The requirement says "email it", we can await the email service directly.
-    await send_otp_email(body.email, otp)
-    
-    return {"message": "OTP sent to your email"}
+    try:
+        await send_otp_email(body.email, otp)
+        return {"message": "OTP sent to your email"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send email: {str(e)}"
+        )
 
 @router.post("/verify-otp")
 async def verify_otp(body: VerifyOtpRequest, db: AsyncSession = Depends(get_db)):
